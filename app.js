@@ -114,7 +114,7 @@ function streak(test){
 /* ---------- render ---------- */
 function render(){
   const a=analyze(); const v=a.v;
-  const box=$('verdict'); box.className='verdict sect '+v.cls;
+  const box=$('verdict'); box.className='verdict '+v.cls;
   $('vTag').textContent=v.tag; $('vHead').textContent=v.head; $('vWhy').textContent=v.why; $('vDo').textContent=v.do;
   $('fRate').textContent=a.rate==null?'–':(a.rate>0?'+':'')+fmt(a.rate,2);
   $('fPlan').textContent=a.planRate==null?'–':Math.round(a.planRate*100)+'%';
@@ -132,9 +132,10 @@ function render(){
   renderBanner();
   renderPeeks(a,logStreak,weekChange,g);
 }
-// The short value shown on the right of each section header, visible even when it's closed.
+// The short value on each home-screen tile, so you can see the key number without opening it.
 function renderPeeks(a,logStreak,weekChange,g){
   const lp=a.pts[a.pts.length-1];
+  const pc=$('pkCheck'); pc.textContent=a.v.tag; pc.className='t-p '+a.v.cls;
   $('pkTrend').textContent=lp?fmt(lp.t)+' lb':'';
   $('pkLog').textContent=entries()[today()]?'Done today ✓':'Not logged today';
   $('pkStreaks').textContent=logStreak+'d logging';
@@ -227,10 +228,9 @@ function loadIntoForm(date){
   $('saveBtn').textContent=exists?'Update day':'Save day';
   $('formMsg').textContent=''; $('formMsg').className='msg';
 }
-// Tapping a day in History: open the Log section, load that day, and scroll to it.
+// Tapping a day in History: switch to the Log view with that day loaded.
 function editDay(date){
-  $('logBox').open=true; loadIntoForm(date);
-  $('logBox').scrollIntoView({behavior:'smooth',block:'start'});
+  location.hash='log'; loadIntoForm(date);
 }
 $('fDate').addEventListener('change',()=>{if($('fDate').value) loadIntoForm($('fDate').value)});
 const numOrNull=id=>{const v=$(id).value.trim();return v===''?null:Number(v)};
@@ -293,15 +293,57 @@ if(canStore){
 mode=Object.keys(mine).length?'mine':'example';
 fillGoals(); loadIntoForm(today()); render();
 
-// Collapsible sections: remember which ones you left open for next time.
-// Until you change anything, the HTML defaults apply (Stall check and Log open).
-const KEY_OPEN='cutcoach.open';
-const sects=[...document.querySelectorAll('details.sect')];
-const savedOpen=load(KEY_OPEN,null);
-for(const d of sects){
-  if(Array.isArray(savedOpen)) d.open=savedOpen.includes(d.dataset.sect);
-  d.addEventListener('toggle',()=>{if(canStore) save(KEY_OPEN,sects.filter(x=>x.open).map(x=>x.dataset.sect));});
+/* ---------- home: greeting, clock, daily line ---------- */
+const NAME='Josh';
+function greetingFor(h){
+  if(h>=5&&h<12) return 'Good morning';
+  if(h>=12&&h<17) return 'Good afternoon';
+  if(h>=17&&h<21) return 'Good evening';
+  return 'Goodnight';
 }
+function tick(){
+  const now=new Date();
+  $('greetWord').textContent=greetingFor(now.getHours());
+  $('greetName').textContent=NAME;
+  const day=now.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase();
+  const date=now.toLocaleDateString(undefined,{month:'short',day:'2-digit'}).toUpperCase();
+  $('clock').textContent=day+' · '+date+' · '+pad(now.getHours())+':'+pad(now.getMinutes());
+}
+tick(); setInterval(tick,30000); // keeps the greeting and clock current if the app stays open
+
+// One line per calendar day: the day number picks the quote, so it stays the same all day
+// and changes at midnight. "Another" steps through the list from there.
+const QUOTES=window.CUT_QUOTES||[];
+let quoteShift=0;
+function showQuote(){
+  if(!QUOTES.length){$('quote').hidden=true;return;}
+  const dayNum=Math.floor(parse(today()).getTime()/864e5);
+  const q=QUOTES[((dayNum+quoteShift)%QUOTES.length+QUOTES.length)%QUOTES.length];
+  $('qK').textContent=q.k; $('qT').textContent=q.t; $('qA').textContent=q.a;
+}
+$('qNext').addEventListener('click',()=>{quoteShift++;showQuote();});
+showQuote();
+
+/* ---------- router: home screen <-> section views ---------- */
+// The URL hash says what's on screen: no hash = home, #log = the Log view, and so on.
+// Using the hash means the phone's back gesture returns to the home screen.
+const VIEWS=[...document.querySelectorAll('.view')].map(v=>v.dataset.view);
+let navCount=0; // in-app navigations so far; lets "Home" use history.back() when it can
+function route(){
+  const name=location.hash.slice(1);
+  const view=VIEWS.includes(name)?name:'';
+  $('home').hidden=view!=='';
+  for(const el of document.querySelectorAll('.view')) el.hidden=el.dataset.view!==view;
+  window.scrollTo(0,0);
+}
+window.addEventListener('hashchange',()=>{navCount++;route();});
+for(const b of document.querySelectorAll('.back')){
+  b.addEventListener('click',ev=>{
+    ev.preventDefault();
+    if(navCount>0) history.back(); else location.hash='';
+  });
+}
+route();
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{

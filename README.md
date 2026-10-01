@@ -18,9 +18,10 @@ npx serve .        # or: python3 -m http.server
 
 | File         | What's in it                                                        |
 |--------------|---------------------------------------------------------------------|
-| `index.html` | The page structure: verdict card, chart, log form, streaks, history, goals |
-| `styles.css` | All styling, including light/dark themes via CSS variables         |
-| `app.js`     | Data storage, the stall-check analysis, rendering, and CSV export  |
+| `index.html` | The home screen plus one view per section (log, stall check, trend, streaks, last 7 days, history, goals) |
+| `styles.css` | All styling: a dark, high-tech theme built on CSS variables        |
+| `app.js`     | Data storage, the stall-check analysis, rendering, CSV export, the greeting and the home/section navigation |
+| `quotes.js`  | The list of daily lines shown on the home screen. Add your own here |
 | `icons/`     | App icon: `icon.svg` (source), `favicon.svg`, and PNGs for the home screen |
 | `manifest.json` | Name and icons used when the app is added to a home screen     |
 
@@ -32,13 +33,22 @@ Each day can have any of these fields. All are optional, but you need at least o
 - **Calories**, **protein** (g), **steps**
 - **Stuck to plan?** Yes or no. This is your own honest call for the day.
 
-The page is split into collapsible sections: Stall check, Trend, Log today, Streaks,
-Last 7 days, History and Goals. Tap a section's header to open or close it. Each
-header shows a key number on the right, such as your trend weight or whether you've
-logged today, so you can check things without opening anything. Stall check and Log
-today start open. After that, the app remembers which sections you left open.
+### Home screen
 
-Tap any day in History to edit or delete it. This opens the Log section with that day loaded. Under **Goals** you can set a daily
+The app opens on a home screen:
+
+- **A greeting with your name.** It says "Good morning" from 5am to noon,
+  "Good afternoon" until 5pm, "Good evening" until 9pm, and "Goodnight" after
+  that. The name is set by `NAME` near the bottom of `app.js`.
+- **Today's line.** This is a short Stoic, existential or discipline idea, such
+  as *memento mori*, *amor fati* or Seneca on wasted time. The same line stays up
+  all day and changes at midnight. Tap **Another** for a different one. To add or
+  edit lines, change `quotes.js`.
+- **A tile for each section.** Each tile shows its key number, such as whether
+  you've logged today or your current verdict. Tap a tile to open that section
+  full screen. Tap **Home**, or use your phone's back gesture, to return.
+
+Tap any day in History to edit or delete it. This opens the Log view with that day loaded. Under **Goals** you can set a daily
 protein target, which drives the protein streak, and a daily step goal.
 
 Until you save your first day, the app shows made-up **example data** so you can
@@ -50,7 +60,6 @@ Everything is stored in your browser's `localStorage`, under these keys:
 
 - `cutcoach.entries`: every logged day, as an object keyed by date (`YYYY-MM-DD`)
 - `cutcoach.goals`: your protein and step goals
-- `cutcoach.open`: which sections you left open
 
 Nothing is sent anywhere. That also means the data belongs to **this browser on
 this device**. Clearing site data, or opening the app in a different browser,

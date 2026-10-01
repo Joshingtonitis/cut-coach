@@ -8,55 +8,48 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-title" content="Cut Coach">
-<meta name="theme-color" content="#0e131a">
+<meta name="theme-color" content="#05070b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="styles.css">
+<script src="quotes.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div class="brand">
-      <img class="logo" src="icons/favicon.svg" alt="" width="44" height="44">
-      <div>
-        <h1>Cut Coach</h1>
-        <p class="sub">Trend weight, habits, and why the scale isn't moving.</p>
-      </div>
-    </div>
-  </header>
-
   <div class="banner" id="banner" hidden></div>
 
-  <!-- Each section is a <details> element: tap its <summary> header to open or close it.
-       The small "peek" text on the right of each header is filled in by app.js so you
-       can see the key number without opening the section. -->
-  <details class="verdict v-info sect" id="verdict" data-sect="check" open>
-    <summary><span class="sum-title">Stall check</span><span class="tag" id="vTag">Loading</span></summary>
-    <div class="body">
-      <h3 id="vHead">Checking your last two weeks…</h3>
-      <p class="why" id="vWhy"></p>
-      <p class="do" id="vDo"></p>
-      <div class="facts">
-        <div class="fact"><div class="num" id="fRate">–</div><div class="lbl">Trend lb/wk</div></div>
-        <div class="fact"><div class="num" id="fPlan">–</div><div class="lbl">On plan, 14d</div></div>
-        <div class="fact"><div class="num" id="fLog">–</div><div class="lbl">Days logged</div></div>
-      </div>
-      <p class="pattern" id="pattern" hidden></p>
+  <!-- HOME: greeting, today's line, and a tile for each section.
+       Tiles are links to #log, #check, ... ; app.js shows the matching view (see "router"). -->
+  <main id="home">
+    <div class="topline">
+      <span class="brandmark"><img class="logo" src="icons/favicon.svg" alt="" width="22" height="22">CUT COACH</span>
+      <span class="clock" id="clock"></span>
     </div>
-  </details>
+    <h1 class="greet"><span id="greetWord">Hello</span>, <span class="name" id="greetName">Josh</span>.</h1>
+    <figure class="quote" id="quote">
+      <figcaption class="q-k" id="qK"></figcaption>
+      <blockquote class="q-t" id="qT"></blockquote>
+      <div class="q-foot"><span class="q-a" id="qA"></span><button class="q-next" type="button" id="qNext">Another ↻</button></div>
+    </figure>
+    <nav class="tiles" aria-label="Sections">
+      <a class="tile tile-wide" href="#log"><span class="t-i">01</span><span class="t-l">Log today</span><span class="t-p" id="pkLog"></span></a>
+      <a class="tile" href="#check"><span class="t-i">02</span><span class="t-l">Stall check</span><span class="t-p" id="pkCheck"></span></a>
+      <a class="tile" href="#trend"><span class="t-i">03</span><span class="t-l">Trend</span><span class="t-p" id="pkTrend"></span></a>
+      <a class="tile" href="#streaks"><span class="t-i">04</span><span class="t-l">Streaks</span><span class="t-p" id="pkStreaks"></span></a>
+      <a class="tile" href="#week"><span class="t-i">05</span><span class="t-l">Last 7 days</span><span class="t-p" id="pkWeek"></span></a>
+      <a class="tile" href="#history"><span class="t-i">06</span><span class="t-l">History</span><span class="t-p" id="pkHist"></span></a>
+      <a class="tile" href="#goals"><span class="t-i">07</span><span class="t-l">Goals</span><span class="t-p" id="pkGoals"></span></a>
+    </nav>
+  </main>
 
-  <details class="panel sect chart" data-sect="trend">
-    <summary><span class="sum-title">Trend</span><span class="peek" id="pkTrend"></span></summary>
-    <div class="body">
-      <div class="legend"><span><i class="sw"></i>Trend weight</span><span><i class="dot"></i>Daily weigh-in</span></div>
-      <div id="chart"></div>
-    </div>
-  </details>
-
-  <details class="panel sect" id="logBox" data-sect="log" open>
-    <summary><span class="sum-title" id="formTitle">Log today</span><span class="peek" id="pkLog"></span></summary>
-    <div class="body">
+  <!-- SECTION VIEWS: one per tile, hidden until its tile is tapped. -->
+  <section class="view" data-view="log" hidden>
+    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2 id="formTitle">Log today</h2></div>
+    <div class="view-body">
+    <div class="panel">
     <form id="form" novalidate>
       <div class="field"><label for="fDate">Date</label><input id="fDate" type="date" required></div>
       <div class="field"><label for="fWeight">Weight (lb)</label><input id="fWeight" type="number" inputmode="decimal" step="0.1" min="50" max="700" placeholder="e.g. 182.4"></div>
@@ -76,47 +69,76 @@
       </div>
     </form>
     </div>
-  </details>
-
-  <details class="panel sect" data-sect="streaks">
-    <summary><span class="sum-title">Streaks</span><span class="peek" id="pkStreaks"></span></summary>
-    <div class="body">
+    </div>
+  </section>
+  <section class="view" data-view="check" hidden>
+    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Stall check</h2></div>
+    <div class="view-body">
+      <div class="verdict v-info" id="verdict">
+        <span class="tag" id="vTag">Loading</span>
+        <h3 id="vHead">Checking your last two weeks…</h3>
+        <p class="why" id="vWhy"></p>
+        <p class="do" id="vDo"></p>
+        <div class="facts">
+          <div class="fact"><div class="num" id="fRate">–</div><div class="lbl">Trend lb/wk</div></div>
+          <div class="fact"><div class="num" id="fPlan">–</div><div class="lbl">On plan, 14d</div></div>
+          <div class="fact"><div class="num" id="fLog">–</div><div class="lbl">Days logged</div></div>
+        </div>
+        <p class="pattern" id="pattern" hidden></p>
+      </div>
+    </div>
+  </section>
+  <section class="view" data-view="trend" hidden>
+    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Trend</h2></div>
+    <div class="view-body">
+      <div class="panel chart">
+        <div class="legend"><span><i class="sw"></i>Trend weight</span><span><i class="dot"></i>Daily weigh-in</span></div>
+        <div id="chart"></div>
+      </div>
+    </div>
+  </section>
+  <section class="view" data-view="streaks" hidden>
+    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Streaks</h2></div>
+    <div class="view-body">
       <div class="streaks">
         <div class="streak"><div class="num" id="sLog">0<small>d</small></div><div class="lbl">Logging</div></div>
         <div class="streak"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
         <div class="streak"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
       </div>
     </div>
-  </details>
-
-  <details class="panel sect" data-sect="week">
-    <summary><span class="sum-title">Last 7 days</span><span class="peek" id="pkWeek"></span></summary>
-    <div class="body">
-      <div class="recap" id="recap"></div>
-    </div>
-  </details>
-
-  <details class="panel sect" data-sect="history">
-    <summary><span class="sum-title">History</span><span class="peek" id="pkHist"></span></summary>
-    <div class="body">
-      <div class="head-row">
-        <p class="msg" id="histMsg" role="status">Tap a day to edit it.</p>
-        <button class="btn small ghost" type="button" id="exportBtn">Export CSV</button>
-      </div>
-      <div class="hist" id="hist"></div>
-    </div>
-  </details>
-
-  <details class="panel sect" data-sect="goals">
-    <summary><span class="sum-title">Goals</span><span class="peek" id="pkGoals"></span></summary>
-    <div class="body">
-      <div class="goals">
-        <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
-        <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
-        <div class="actions"><button class="btn small" type="button" id="goalSave">Save goals</button><span class="msg" id="goalMsg" role="status"></span></div>
+  </section>
+  <section class="view" data-view="week" hidden>
+    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Last 7 days</h2></div>
+    <div class="view-body">
+      <div class="panel">
+        <div class="recap" id="recap"></div>
       </div>
     </div>
-  </details>
+  </section>
+  <section class="view" data-view="history" hidden>
+    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>History</h2></div>
+    <div class="view-body">
+      <div class="panel">
+        <div class="head-row">
+          <p class="msg" id="histMsg" role="status">Tap a day to edit it.</p>
+          <button class="btn small ghost" type="button" id="exportBtn">Export CSV</button>
+        </div>
+        <div class="hist" id="hist"></div>
+      </div>
+    </div>
+  </section>
+  <section class="view" data-view="goals" hidden>
+    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Goals</h2></div>
+    <div class="view-body">
+      <div class="panel">
+        <div class="goals">
+          <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
+          <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
+          <div class="actions"><button class="btn small" type="button" id="goalSave">Save goals</button><span class="msg" id="goalMsg" role="status"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>
 </body>
 </html>
