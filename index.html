@@ -3,46 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Cut Coach</title>
+<title>Pinche Güey</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="manifest" href="manifest.json">
-<meta name="apple-mobile-web-app-title" content="Cut Coach">
-<meta name="theme-color" content="#05070b">
+<meta name="apple-mobile-web-app-title" content="Pinche Güey">
+<meta name="theme-color" content="#04060a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="styles.css">
 <script src="quotes.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
+<!-- INTRO: plays every time the app opens. It's in the HTML (not added by JS) so it covers
+     the app from the first frame. app.js runs the sequence; tap anywhere to skip. -->
+<div class="intro" id="intro" aria-hidden="true">
+  <div class="intro-grid"></div>
+  <div class="intro-frame">
+    <div class="intro-boot" id="introBoot"></div>
+    <div class="intro-scan"></div>
+    <p class="intro-greet" id="introGreet"></p>
+    <p class="intro-name" id="introName"></p>
+    <div class="intro-bar"><i></i></div>
+  </div>
+  <div class="intro-skip">Tap to skip</div>
+</div>
+
 <div class="wrap">
   <div class="banner" id="banner" hidden></div>
 
   <!-- Each tab is a <section class="view">. The bottom tab bar links to #home, #log, ...
        and app.js shows the matching view (see "router"). -->
 
-  <!-- HOME: greeting, today's line, mood check-in, one-line status -->
+  <!-- HOME: greeting, today's line, mood check-in, end-of-day debrief, status readout -->
   <section class="view" data-view="home" id="home">
     <div class="topline">
-      <span class="brandmark"><img class="logo" src="icons/favicon.svg" alt="" width="22" height="22">CUT COACH</span>
-      <span class="clock" id="clock"></span>
+      <span class="brandmark"><img class="logo" src="icons/favicon.svg" alt="" width="22" height="22">PINCHE GÜEY</span>
+      <span class="link"><i class="pulse" title="Online"></i><span class="clock" id="clock"></span></span>
     </div>
-    <h1 class="greet"><span id="greetWord">Hello</span>, <span class="name" id="greetName">Josh</span>.</h1>
-    <figure class="quote" id="quote">
+    <h1 class="greet"><span id="greetWord">Hello</span>,<br><span class="name" id="greetName">Josh</span></h1>
+    <figure class="quote hud" id="quote">
       <figcaption class="q-k" id="qK"></figcaption>
       <blockquote class="q-t" id="qT"></blockquote>
       <div class="q-foot"><span class="q-a" id="qA"></span><button class="q-next" type="button" id="qNext">Another ↻</button></div>
     </figure>
 
-    <div class="mood panel" id="moodCard">
-      <div class="mood-head">
+    <div class="panel hud mood" id="moodCard">
+      <div class="card-head">
         <span class="kicker" id="moodSlot">Morning check-in</span>
-        <span class="mood-now" id="moodNow"></span>
+        <span class="card-state" id="moodNow"></span>
       </div>
-      <p class="mood-q" id="moodQ">How are you feeling?</p>
+      <p class="card-q" id="moodQ">How are you feeling?</p>
       <div class="mood-opts" role="group" aria-labelledby="moodQ">
         <button type="button" class="mood-btn" data-mood="exhausted" aria-pressed="false"><i class="swatch"></i>Exhausted</button>
         <button type="button" class="mood-btn" data-mood="locked" aria-pressed="false"><i class="swatch"></i>Locked in</button>
@@ -51,7 +65,17 @@
       <div class="mood-day" id="moodDay" aria-label="Today's check-ins"></div>
     </div>
 
-    <a class="status" href="#progress">
+    <!-- Shown from 5pm until 5am. Ratings save straight into that day's entry. -->
+    <div class="panel hud debrief" id="debriefCard" hidden>
+      <div class="card-head">
+        <span class="kicker">End-of-day debrief</span>
+        <span class="card-state" id="debriefState"></span>
+      </div>
+      <p class="card-q" id="debriefQ">Rate today, 1 to 5.</p>
+      <div class="rates" id="debriefRates"></div>
+    </div>
+
+    <a class="status hud" href="#progress">
       <span class="tag" id="hsTag">–</span>
       <span class="status-main"><span class="status-trend" id="hsTrend">–</span><span class="status-next" id="hsNext"></span></span>
       <span class="status-go" aria-hidden="true">→</span>
@@ -60,8 +84,8 @@
 
   <!-- LOG -->
   <section class="view" data-view="log" hidden>
-    <header class="tabhead"><h2 id="formTitle">Log today</h2><p class="sub" id="logHint"></p></header>
-    <div class="panel">
+    <header class="tabhead"><span class="mod">MOD.01</span><h2 id="formTitle">Log today</h2><p class="sub" id="logHint"></p></header>
+    <div class="panel hud">
     <form id="form" novalidate>
       <div class="field"><label for="fDate">Date</label><input id="fDate" type="date" required></div>
       <div class="field"><label for="fWeight">Weight (lb)</label><input id="fWeight" type="number" inputmode="decimal" step="0.1" min="50" max="700" placeholder="e.g. 182.4"></div>
@@ -74,6 +98,7 @@
           <button type="button" class="no" id="planNo" aria-pressed="false">No</button>
         </div>
       </div>
+      <div class="field full"><span class="lbltxt">End-of-day debrief · optional</span><div class="rates" id="formRates"></div></div>
       <div class="actions">
         <button class="btn" type="submit" id="saveBtn">Save day</button>
         <button class="btn ghost" type="button" id="delBtn" hidden>Delete this day</button>
@@ -83,13 +108,13 @@
     </div>
   </section>
 
-  <!-- PROGRESS: stall check, trend chart, summary, streaks -->
+  <!-- PROGRESS: stall check, trend chart, summary, body signals, streaks -->
   <section class="view" data-view="progress" hidden>
-    <header class="tabhead"><h2>Progress</h2><p class="sub" id="progSub"></p></header>
+    <header class="tabhead"><span class="mod">MOD.02</span><h2>Progress</h2><p class="sub" id="progSub"></p></header>
 
     <div class="block">
       <h3 class="kicker">Stall check</h3>
-      <div class="verdict v-info" id="verdict">
+      <div class="verdict hud v-info" id="verdict">
         <span class="tag" id="vTag">Loading</span>
         <h4 id="vHead">Checking your recent weigh-ins…</h4>
         <p class="why" id="vWhy"></p>
@@ -105,7 +130,7 @@
 
     <div class="block">
       <h3 class="kicker">Trend</h3>
-      <div class="panel chart">
+      <div class="panel hud chart">
         <div class="legend"><span><i class="sw"></i>Trend weight</span><span><i class="dot"></i>Weigh-in</span></div>
         <div id="chart"></div>
       </div>
@@ -113,7 +138,7 @@
 
     <div class="block">
       <h3 class="kicker" id="recapTitle">Last 7 days</h3>
-      <div class="panel">
+      <div class="panel hud">
         <div class="seg sched" role="group" aria-label="Weigh-in schedule">
           <button type="button" data-sched="daily" aria-pressed="false">Daily</button>
           <button type="button" data-sched="weekly" aria-pressed="false">Weekly</button>
@@ -124,19 +149,27 @@
     </div>
 
     <div class="block">
+      <h3 class="kicker">Body signals</h3>
+      <div class="panel hud">
+        <div class="signals" id="signals"></div>
+        <ul class="notes" id="signalNotes"></ul>
+      </div>
+    </div>
+
+    <div class="block">
       <h3 class="kicker">Streaks</h3>
       <div class="streaks">
-        <div class="streak"><div class="num" id="sLog">0<small>d</small></div><div class="lbl" id="sLogLbl">Logging</div></div>
-        <div class="streak"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
-        <div class="streak"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
+        <div class="streak hud"><div class="num" id="sLog">0<small>d</small></div><div class="lbl" id="sLogLbl">Logging</div></div>
+        <div class="streak hud"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
+        <div class="streak hud"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
       </div>
     </div>
   </section>
 
   <!-- HISTORY -->
   <section class="view" data-view="history" hidden>
-    <header class="tabhead"><h2>History</h2><p class="sub" id="histMsg" role="status">Tap a day to edit it.</p></header>
-    <div class="panel">
+    <header class="tabhead"><span class="mod">MOD.03</span><h2>History</h2><p class="sub" id="histMsg" role="status">Tap a day to edit it.</p></header>
+    <div class="panel hud">
       <div class="hist" id="hist"></div>
     </div>
     <button class="btn ghost" type="button" id="exportBtn">Export CSV</button>
@@ -144,10 +177,10 @@
 
   <!-- SETTINGS: weigh-in schedule and goals -->
   <section class="view" data-view="settings" hidden>
-    <header class="tabhead"><h2>Settings</h2></header>
+    <header class="tabhead"><span class="mod">MOD.04</span><h2>Settings</h2></header>
     <div class="block">
       <h3 class="kicker">Weigh-in schedule</h3>
-      <div class="panel">
+      <div class="panel hud">
         <p class="msg">How often you step on the scale. The stall check, trend line, summary and streaks all adjust to it.</p>
         <div class="seg sched" role="group" aria-label="Weigh-in schedule">
           <button type="button" data-sched="daily" aria-pressed="false">Daily</button>
@@ -158,7 +191,7 @@
     </div>
     <div class="block">
       <h3 class="kicker">Goals</h3>
-      <div class="panel">
+      <div class="panel hud">
         <div class="goals">
           <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
           <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
