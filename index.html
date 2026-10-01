@@ -106,6 +106,21 @@
         </div>
       </div>
       <div class="field full"><span class="lbltxt">End-of-day debrief · optional</span><div class="rates" id="formRates"></div></div>
+      <!-- Progress photo for the selected date. Saved on pick (no need to press Save day). -->
+      <div class="field full">
+        <span class="lbltxt">Progress photo · optional</span>
+        <div class="photo-field">
+          <button type="button" class="photo-thumb" id="photoThumb" aria-label="View photo" hidden><img id="photoPrev" alt=""></button>
+          <div class="photo-side">
+            <p class="msg" id="photoMsg"></p>
+            <div class="photo-actions">
+              <label class="btn ghost small" for="photoInput" id="photoAddLbl">Add photo</label>
+              <button class="btn ghost small" type="button" id="photoDel" hidden>Remove</button>
+            </div>
+          </div>
+        </div>
+        <input class="sr-only" type="file" id="photoInput" accept="image/*">
+      </div>
       <div class="actions">
         <button class="btn" type="submit" id="saveBtn">Save day</button>
         <button class="btn ghost" type="button" id="delBtn" hidden>Delete this day</button>
@@ -164,6 +179,19 @@
     </div>
 
     <div class="block">
+      <h3 class="kicker">Visual log</h3>
+      <div class="panel hud">
+        <div class="compare" id="compare" hidden>
+          <figure><button type="button" class="cmp-img" id="cmpA"><img alt=""></button><figcaption id="cmpACap"></figcaption></figure>
+          <figure><button type="button" class="cmp-img" id="cmpB"><img alt=""></button><figcaption id="cmpBCap"></figcaption></figure>
+        </div>
+        <p class="cmp-delta" id="cmpDelta" hidden></p>
+        <div class="gallery" id="gallery"></div>
+        <p class="msg" id="galleryMsg"></p>
+      </div>
+    </div>
+
+    <div class="block">
       <h3 class="kicker">Streaks</h3>
       <div class="streaks">
         <div class="streak hud"><div class="num" id="sLog">0<small>d</small></div><div class="lbl" id="sLogLbl">Logging</div></div>
@@ -211,6 +239,17 @@
 
 <!-- Glowing ring for mood changes on browsers without View Transitions (see styles.css) -->
 <div class="lightwave" id="lightwave" hidden aria-hidden="true"><i class="lw-ring"></i></div>
+
+<!-- Full-screen photo viewer -->
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Progress photo">
+  <button type="button" class="vw-close" id="vwClose" aria-label="Close">✕</button>
+  <img id="vwImg" alt="">
+  <div class="vw-bar">
+    <button type="button" id="vwPrev" aria-label="Previous photo">‹</button>
+    <span id="vwCap"></span>
+    <button type="button" id="vwNext" aria-label="Next photo">›</button>
+  </div>
+</div>
 
 <!-- Bottom tab bar -->
 <nav class="tabbar" aria-label="Main">

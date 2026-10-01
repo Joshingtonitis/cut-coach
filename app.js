@@ -280,6 +280,7 @@ function render(){
   renderDebrief();
   renderHist(a.days);
   renderBanner();
+  renderGallery();
   // home status card + tab subtitles
   const lp=a.pts[a.pts.length-1], next=nextWeighIn(a.pts);
   const t=$('hsTag'); t.textContent=v.tag; t.className='tag '+v.cls;
@@ -381,6 +382,7 @@ function loadIntoForm(date){
   $('formTitle').textContent=date===today()?'Log today':'Edit '+short(date);
   $('saveBtn').textContent=exists?'Update day':'Save day';
   $('formMsg').textContent=''; $('formMsg').className='msg';
+  renderPhotoField();
 }
 // Tapping a day in History: switch to the Log tab with that day loaded.
 function editDay(date){ location.hash='log'; loadIntoForm(date); }
@@ -442,6 +444,123 @@ $('exportBtn').addEventListener('click',()=>{
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   msg.textContent='Exported '+plural(days.length,'day')+'.';
 });
+
+/* ---------- progress photos ---------- */
+// Photos are too big for localStorage (about 5 MB total), so they live in IndexedDB, the
+// browser's larger on-device database. One photo per date, shrunk to 1280px on the long
+// side as JPEG (roughly 150–300 KB) before saving. Nothing leaves the phone.
+const PHOTO_DB='pinche-guey', PHOTO_STORE='photos';
+let photoDBp=null, photos=[], photoURL={}; // photos: [{date,blob,w,h}] oldest first; photoURL: date -> object URL
+function photoDB(){
+  if(!photoDBp) photoDBp=new Promise((res,rej)=>{
+    if(!window.indexedDB) return rej(new Error('IndexedDB unavailable'));
+    const r=indexedDB.open(PHOTO_DB,1);
+    r.onupgradeneeded=()=>r.result.createObjectStore(PHOTO_STORE,{keyPath:'date'});
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+  return photoDBp;
+}
+// Runs one request in a transaction and resolves with its result when the transaction commits.
+function idb(mode,fn){
+  return photoDB().then(db=>new Promise((res,rej)=>{
+    const tx=db.transaction(PHOTO_STORE,mode), req=fn(tx.objectStore(PHOTO_STORE));
+    tx.oncomplete=()=>res(req.result); tx.onerror=tx.onabort=()=>rej(tx.error);
+  }));
+}
+// Draws the picked image onto a canvas at a smaller size and re-encodes it as JPEG.
+function compressImage(file,max=1280,quality=0.82){
+  return new Promise((res,rej)=>{
+    const src=URL.createObjectURL(file), img=new Image();
+    img.onload=()=>{
+      const k=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+      const w=Math.round(img.naturalWidth*k), h=Math.round(img.naturalHeight*k);
+      const c=document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h); URL.revokeObjectURL(src);
+      c.toBlob(b=>b?res({blob:b,w,h}):rej(new Error('encode failed')),'image/jpeg',quality);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(src);rej(new Error('decode failed'));};
+    img.src=src;
+  });
+}
+async function loadPhotos(){
+  try{ photos=(await idb('readonly',st=>st.getAll())).sort((a,b)=>a.date<b.date?-1:1); }
+  catch(e){ photos=[]; $('galleryMsg').textContent='Photos aren\'t available in this browser.'; }
+  for(const u of Object.values(photoURL)) URL.revokeObjectURL(u);
+  photoURL={}; for(const p of photos) photoURL[p.date]=URL.createObjectURL(p.blob);
+  renderPhotoField(); renderGallery();
+}
+const photoFor=date=>photos.find(p=>p.date===date)||null;
+const weightOn=date=>mine[date]?.weight??null; // real entries only, never example data
+const photoCap=date=>short(date)+(weightOn(date)!=null?' · '+fmt(weightOn(date))+' lb':'');
+// Log tab: photo for the date in the form, plus whether a photo is due on your schedule.
+function renderPhotoField(){
+  const date=$('fDate').value, p=photoFor(date);
+  $('photoThumb').hidden=!p; $('photoDel').hidden=!p;
+  if(p) $('photoPrev').src=photoURL[date];
+  $('photoAddLbl').textContent=p?'Replace':'Add photo';
+  const S=sched(), last=photos.length?photos[photos.length-1].date:null;
+  let msg;
+  if(p) msg='Photo saved for '+short(date)+'.';
+  else if(!last) msg='Take one now as your starting point. Same spot, light and pose each time.';
+  else{ const due=addDays(last,S.every); msg=today()>=due?'Photo due. Last one was '+short(last)+'.':'Next photo '+(isDaily()?'tomorrow':'on '+short(due))+'. Last one was '+short(last)+'.'; }
+  $('photoMsg').textContent=msg;
+}
+$('photoInput').addEventListener('change',async ev=>{
+  const file=ev.target.files&&ev.target.files[0]; ev.target.value=''; // reset so picking the same file again still fires
+  if(!file) return;
+  const date=$('fDate').value; if(!date){$('photoMsg').textContent='Pick a date first.';return;}
+  $('photoMsg').textContent='Saving photo…';
+  try{
+    const {blob,w,h}=await compressImage(file);
+    await idb('readwrite',st=>st.put({date,blob,w,h,added:Date.now()}));
+    if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{}); // ask the browser not to clear it
+    await loadPhotos();
+  }catch(e){ $('photoMsg').textContent='Couldn\'t save that photo. Try a different one.'; }
+});
+$('photoDel').addEventListener('click',async()=>{
+  const date=$('fDate').value;
+  if(!confirm('Remove the progress photo for '+short(date)+'?')) return;
+  try{ await idb('readwrite',st=>st.delete(date)); await loadPhotos(); }
+  catch(e){ $('photoMsg').textContent='Couldn\'t remove the photo. Try again.'; }
+});
+$('photoThumb').addEventListener('click',()=>openViewer($('fDate').value));
+// Progress → Visual log: first vs latest side by side, then every photo newest first.
+function renderGallery(){
+  const g=$('gallery'); g.innerHTML='';
+  const cmp=photos.length>=2;
+  $('compare').hidden=!cmp; $('cmpDelta').hidden=!cmp;
+  if(cmp){
+    const a=photos[0].date, b=photos[photos.length-1].date;
+    $('cmpA').querySelector('img').src=photoURL[a]; $('cmpA').dataset.date=a; $('cmpACap').textContent='START · '+photoCap(a);
+    $('cmpB').querySelector('img').src=photoURL[b]; $('cmpB').dataset.date=b; $('cmpBCap').textContent='LATEST · '+photoCap(b);
+    const days=diffDays(a,b), wa=weightOn(a), wb=weightOn(b);
+    const span=days>=14?Math.round(days/7)+' weeks':plural(days,'day');
+    $('cmpDelta').textContent=(wa!=null&&wb!=null?((wb-wa)>0?'+':'')+fmt(wb-wa)+' lb over ':'')+span;
+  }
+  for(const p of [...photos].reverse()){
+    const b=document.createElement('button'); b.type='button'; b.setAttribute('aria-label','Photo from '+short(p.date));
+    const img=document.createElement('img'); img.src=photoURL[p.date]; img.alt=''; img.loading='lazy';
+    const cap=document.createElement('span'); cap.textContent=short(p.date);
+    b.append(img,cap); b.addEventListener('click',()=>openViewer(p.date)); g.append(b);
+  }
+  if(!$('galleryMsg').textContent.startsWith('Photos aren'))
+    $('galleryMsg').textContent=photos.length?'':'No photos yet. Add one from the Log tab on your '+(isDaily()?'daily':settings.schedule==='weekly'?'weekly':'bi-weekly')+' weigh-in.';
+}
+for(const id of ['cmpA','cmpB']) $(id).addEventListener('click',()=>openViewer($(id).dataset.date));
+// Full-screen viewer with previous/next.
+let viewIdx=-1;
+function openViewer(date){ viewIdx=photos.findIndex(p=>p.date===date); if(viewIdx<0) return; $('viewer').hidden=false; showViewer(); }
+function showViewer(){
+  const p=photos[viewIdx];
+  $('vwImg').src=photoURL[p.date]; $('vwImg').alt='Progress photo from '+short(p.date);
+  $('vwCap').textContent=photoCap(p.date)+'  ·  '+(viewIdx+1)+'/'+photos.length;
+  $('vwPrev').disabled=viewIdx===0; $('vwNext').disabled=viewIdx===photos.length-1;
+}
+$('vwPrev').addEventListener('click',()=>{if(viewIdx>0){viewIdx--;showViewer();}});
+$('vwNext').addEventListener('click',()=>{if(viewIdx<photos.length-1){viewIdx++;showViewer();}});
+$('vwClose').addEventListener('click',()=>{$('viewer').hidden=true;});
+$('viewer').addEventListener('click',ev=>{if(ev.target.id==='viewer') $('viewer').hidden=true;});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape') $('viewer').hidden=true;});
 
 /* ---------- mood check-ins ---------- */
 // Four check-ins a day, matching the greeting: morning 5–12, afternoon 12–5, evening 5–9,
@@ -626,6 +745,7 @@ tick(); setInterval(tick,30000); // keeps the greeting, clock and check-in slot 
 showQuote();
 route();
 playIntro();
+loadPhotos();
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{

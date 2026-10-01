@@ -241,7 +241,13 @@ input{font:inherit;font-family:var(--mono);font-size:16px;color:var(--fg);backgr
 /* iOS gives date fields a built-in minimum width that ignores the grid and overlaps the next
    column. appearance:none above removes it; these keep the date text aligned like the rest. */
 input[type="date"]{display:block}
-input::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.5em}
+input::-webkit-date-and-time-value{text-align:left;margin:0}
+/* iOS Safari only (-webkit-touch-callout exists only there): once appearance is off it pins
+   the date text to the top of the box, so center it vertically. */
+@supports (-webkit-touch-callout:none){
+  input[type="date"]{display:flex;align-items:center;line-height:46px}
+  input::-webkit-date-and-time-value{line-height:46px;min-height:46px}
+}
 input::-webkit-calendar-picker-indicator{opacity:.6}
 input::placeholder{color:var(--faint)}
 input:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px rgba(var(--a1),.14),0 0 18px -6px rgba(var(--a1),.8)}
@@ -260,6 +266,31 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .btn:disabled{opacity:.5;cursor:default}
 .msg{font-size:13px;color:var(--muted)}
 .msg.err{color:var(--bad)}
+
+/* Progress photos */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.photo-field{display:flex;gap:14px;align-items:center}
+.photo-thumb{flex:none;width:84px;aspect-ratio:3/4;padding:0;border:1px solid rgba(var(--a1),.5);border-radius:2px;overflow:hidden;background:var(--sunk);cursor:pointer;box-shadow:0 0 16px -6px rgba(var(--a1),.7)}
+.photo-thumb img,.gallery img,.cmp-img img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-side{display:flex;flex-direction:column;gap:10px;min-width:0}
+.photo-actions{display:flex;gap:8px;flex-wrap:wrap}
+label.btn{display:inline-block;cursor:pointer}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.compare figure{margin:0;display:flex;flex-direction:column;gap:6px}
+.cmp-img{aspect-ratio:3/4;padding:0;border:1px solid var(--line-strong);border-radius:2px;overflow:hidden;background:var(--sunk);cursor:pointer}
+.compare figcaption{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--muted);text-align:center}
+.compare figure:last-child .cmp-img{border-color:rgba(var(--a1),.6);box-shadow:0 0 18px -6px rgba(var(--a1),.7)}
+.cmp-delta{font-family:var(--mono);font-size:13px;text-align:center;color:var(--accent)}
+.gallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.gallery button{position:relative;aspect-ratio:3/4;padding:0;border:1px solid var(--line);border-radius:2px;overflow:hidden;background:var(--sunk);cursor:pointer}
+.gallery button span{position:absolute;left:0;right:0;bottom:0;padding:3px 4px;font-family:var(--mono);font-size:9px;letter-spacing:.04em;color:var(--fg);background:linear-gradient(transparent,rgba(0,0,0,.75))}
+/* Full-screen viewer */
+.viewer{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:max(56px,env(safe-area-inset-top)) 14px max(24px,env(safe-area-inset-bottom));background:rgba(0,0,0,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.viewer img{max-width:100%;max-height:calc(100% - 70px);object-fit:contain;border:1px solid rgba(var(--a1),.4);box-shadow:0 0 40px -10px rgba(var(--a1),.6)}
+.vw-close{position:absolute;top:max(14px,env(safe-area-inset-top));right:14px;font:inherit;font-size:18px;width:40px;height:40px;color:var(--fg);background:var(--sunk);border:1px solid var(--line-strong);border-radius:2px;cursor:pointer}
+.vw-bar{display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--muted)}
+.vw-bar button{font:inherit;font-size:22px;width:44px;height:40px;color:var(--accent);background:var(--sunk);border:1px solid var(--line-strong);border-radius:2px;cursor:pointer}
+.vw-bar button:disabled{opacity:.3;cursor:default}
 
 /* Streaks + summary */
 .streaks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
