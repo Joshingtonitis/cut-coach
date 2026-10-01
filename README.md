@@ -21,6 +21,8 @@ npx serve .        # or: python3 -m http.server
 | `index.html` | The page structure: verdict card, chart, log form, streaks, history, goals |
 | `styles.css` | All styling, including light/dark themes via CSS variables         |
 | `app.js`     | Data storage, the stall-check analysis, rendering, and CSV export  |
+| `icons/`     | App icon: `icon.svg` (source), `favicon.svg`, and PNGs for the home screen |
+| `manifest.json` | Name and icons used when the app is added to a home screen     |
 
 ## What you log
 
