@@ -41,7 +41,14 @@
   <!-- HOME: greeting, today's line, mood check-in, end-of-day debrief, status readout -->
   <section class="view" data-view="home" id="home">
     <div class="topline">
-      <span class="brandmark"><img class="logo" src="icons/favicon.svg" alt="" width="22" height="22">PINCHE GÜEY</span>
+      <span class="brandmark"><svg class="logo" viewBox="0 0 512 512" aria-hidden="true"><!-- drawn inline so it takes the theme colors -->
+        <defs>
+          <linearGradient id="lgLine" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="lg-from"/><stop offset="1" class="lg-to"/></linearGradient>
+        </defs>
+        <rect width="512" height="512" rx="112" class="lg-bg"/>
+        <path d="M112 136 L196 212 L248 188 L320 300 L392 372" fill="none" stroke="url(#lgLine)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="392" cy="372" r="34" class="lg-dot"/><circle cx="392" cy="372" r="14" class="lg-hole"/>
+      </svg>PINCHE GÜEY</span>
       <span class="link"><i class="pulse" title="Online"></i><span class="clock" id="clock"></span></span>
     </div>
     <h1 class="greet"><span id="greetWord">Hello</span>,<br><span class="name" id="greetName">Josh</span></h1>
@@ -202,8 +209,8 @@
   </section>
 </div>
 
-<!-- Lights-on effect for mood changes (see styles.css "Lights on") -->
-<div class="lightwave" id="lightwave" hidden aria-hidden="true"><div class="lw-dark"></div><i class="lw-flash"></i><i class="lw-ring"></i></div>
+<!-- Glowing ring for mood changes on browsers without View Transitions (see styles.css) -->
+<div class="lightwave" id="lightwave" hidden aria-hidden="true"><i class="lw-ring"></i></div>
 
 <!-- Bottom tab bar -->
 <nav class="tabbar" aria-label="Main">
