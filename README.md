@@ -114,7 +114,14 @@ of the day, the app uses the default teal and violet. Tap the selected mood agai
 to clear it. The row of four dots shows the day's check-ins so far.
 
 The themes live in `styles.css`. Each `:root[data-mood="…"]` block overrides the
-accent color variables (`--a1`, `--a2`, `--a3`).
+accent color variables (`--a1`, `--a2`, `--a3`). It also re-tints the status colors
+(`--good`, `--warn`, `--bad`) used by verdict tags, the Yes/No buttons and History
+pills, so nothing stays teal or green in another theme.
+
+**Lights on.** When a check-in changes the theme, the screen drops dark for an
+instant and flickers. Then light spreads out in a circle from the button you tapped,
+with a glowing edge, revealing the new colors. It takes about a second. It's
+skipped when Reduce Motion is on.
 
 ### Weigh-in schedule
 
