@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Cut Coach</title>
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -21,9 +21,11 @@
 <div class="wrap">
   <div class="banner" id="banner" hidden></div>
 
-  <!-- HOME: greeting, today's line, and a tile for each section.
-       Tiles are links to #log, #check, ... ; app.js shows the matching view (see "router"). -->
-  <main id="home">
+  <!-- Each tab is a <section class="view">. The bottom tab bar links to #home, #log, ...
+       and app.js shows the matching view (see "router"). -->
+
+  <!-- HOME: greeting, today's line, mood check-in, one-line status -->
+  <section class="view" data-view="home" id="home">
     <div class="topline">
       <span class="brandmark"><img class="logo" src="icons/favicon.svg" alt="" width="22" height="22">CUT COACH</span>
       <span class="clock" id="clock"></span>
@@ -34,21 +36,31 @@
       <blockquote class="q-t" id="qT"></blockquote>
       <div class="q-foot"><span class="q-a" id="qA"></span><button class="q-next" type="button" id="qNext">Another ↻</button></div>
     </figure>
-    <nav class="tiles" aria-label="Sections">
-      <a class="tile tile-wide" href="#log"><span class="t-i">01</span><span class="t-l">Log today</span><span class="t-p" id="pkLog"></span></a>
-      <a class="tile" href="#check"><span class="t-i">02</span><span class="t-l">Stall check</span><span class="t-p" id="pkCheck"></span></a>
-      <a class="tile" href="#trend"><span class="t-i">03</span><span class="t-l">Trend</span><span class="t-p" id="pkTrend"></span></a>
-      <a class="tile" href="#streaks"><span class="t-i">04</span><span class="t-l">Streaks</span><span class="t-p" id="pkStreaks"></span></a>
-      <a class="tile" href="#week"><span class="t-i">05</span><span class="t-l">Last 7 days</span><span class="t-p" id="pkWeek"></span></a>
-      <a class="tile" href="#history"><span class="t-i">06</span><span class="t-l">History</span><span class="t-p" id="pkHist"></span></a>
-      <a class="tile" href="#goals"><span class="t-i">07</span><span class="t-l">Goals</span><span class="t-p" id="pkGoals"></span></a>
-    </nav>
-  </main>
 
-  <!-- SECTION VIEWS: one per tile, hidden until its tile is tapped. -->
+    <div class="mood panel" id="moodCard">
+      <div class="mood-head">
+        <span class="kicker" id="moodSlot">Morning check-in</span>
+        <span class="mood-now" id="moodNow"></span>
+      </div>
+      <p class="mood-q" id="moodQ">How are you feeling?</p>
+      <div class="mood-opts" role="group" aria-labelledby="moodQ">
+        <button type="button" class="mood-btn" data-mood="exhausted" aria-pressed="false"><i class="swatch"></i>Exhausted</button>
+        <button type="button" class="mood-btn" data-mood="locked" aria-pressed="false"><i class="swatch"></i>Locked in</button>
+        <button type="button" class="mood-btn" data-mood="energetic" aria-pressed="false"><i class="swatch"></i>Energetic</button>
+      </div>
+      <div class="mood-day" id="moodDay" aria-label="Today's check-ins"></div>
+    </div>
+
+    <a class="status" href="#progress">
+      <span class="tag" id="hsTag">–</span>
+      <span class="status-main"><span class="status-trend" id="hsTrend">–</span><span class="status-next" id="hsNext"></span></span>
+      <span class="status-go" aria-hidden="true">→</span>
+    </a>
+  </section>
+
+  <!-- LOG -->
   <section class="view" data-view="log" hidden>
-    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2 id="formTitle">Log today</h2></div>
-    <div class="view-body">
+    <header class="tabhead"><h2 id="formTitle">Log today</h2><p class="sub" id="logHint"></p></header>
     <div class="panel">
     <form id="form" novalidate>
       <div class="field"><label for="fDate">Date</label><input id="fDate" type="date" required></div>
@@ -69,67 +81,83 @@
       </div>
     </form>
     </div>
-    </div>
   </section>
-  <section class="view" data-view="check" hidden>
-    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Stall check</h2></div>
-    <div class="view-body">
+
+  <!-- PROGRESS: stall check, trend chart, summary, streaks -->
+  <section class="view" data-view="progress" hidden>
+    <header class="tabhead"><h2>Progress</h2><p class="sub" id="progSub"></p></header>
+
+    <div class="block">
+      <h3 class="kicker">Stall check</h3>
       <div class="verdict v-info" id="verdict">
         <span class="tag" id="vTag">Loading</span>
-        <h3 id="vHead">Checking your last two weeks…</h3>
+        <h4 id="vHead">Checking your recent weigh-ins…</h4>
         <p class="why" id="vWhy"></p>
         <p class="do" id="vDo"></p>
         <div class="facts">
           <div class="fact"><div class="num" id="fRate">–</div><div class="lbl">Trend lb/wk</div></div>
-          <div class="fact"><div class="num" id="fPlan">–</div><div class="lbl">On plan, 14d</div></div>
-          <div class="fact"><div class="num" id="fLog">–</div><div class="lbl">Days logged</div></div>
+          <div class="fact"><div class="num" id="fPlan">–</div><div class="lbl" id="fPlanLbl">On plan</div></div>
+          <div class="fact"><div class="num" id="fLog">–</div><div class="lbl" id="fLogLbl">Days logged</div></div>
         </div>
         <p class="pattern" id="pattern" hidden></p>
       </div>
     </div>
-  </section>
-  <section class="view" data-view="trend" hidden>
-    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Trend</h2></div>
-    <div class="view-body">
+
+    <div class="block">
+      <h3 class="kicker">Trend</h3>
       <div class="panel chart">
-        <div class="legend"><span><i class="sw"></i>Trend weight</span><span><i class="dot"></i>Daily weigh-in</span></div>
+        <div class="legend"><span><i class="sw"></i>Trend weight</span><span><i class="dot"></i>Weigh-in</span></div>
         <div id="chart"></div>
       </div>
     </div>
-  </section>
-  <section class="view" data-view="streaks" hidden>
-    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Streaks</h2></div>
-    <div class="view-body">
+
+    <div class="block">
+      <h3 class="kicker" id="recapTitle">Last 7 days</h3>
+      <div class="panel">
+        <div class="seg sched" role="group" aria-label="Weigh-in schedule">
+          <button type="button" data-sched="daily" aria-pressed="false">Daily</button>
+          <button type="button" data-sched="weekly" aria-pressed="false">Weekly</button>
+          <button type="button" data-sched="biweekly" aria-pressed="false">Bi-weekly</button>
+        </div>
+        <div class="recap" id="recap"></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <h3 class="kicker">Streaks</h3>
       <div class="streaks">
-        <div class="streak"><div class="num" id="sLog">0<small>d</small></div><div class="lbl">Logging</div></div>
+        <div class="streak"><div class="num" id="sLog">0<small>d</small></div><div class="lbl" id="sLogLbl">Logging</div></div>
         <div class="streak"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
         <div class="streak"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
       </div>
     </div>
   </section>
-  <section class="view" data-view="week" hidden>
-    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Last 7 days</h2></div>
-    <div class="view-body">
-      <div class="panel">
-        <div class="recap" id="recap"></div>
-      </div>
-    </div>
-  </section>
+
+  <!-- HISTORY -->
   <section class="view" data-view="history" hidden>
-    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>History</h2></div>
-    <div class="view-body">
+    <header class="tabhead"><h2>History</h2><p class="sub" id="histMsg" role="status">Tap a day to edit it.</p></header>
+    <div class="panel">
+      <div class="hist" id="hist"></div>
+    </div>
+    <button class="btn ghost" type="button" id="exportBtn">Export CSV</button>
+  </section>
+
+  <!-- SETTINGS: weigh-in schedule and goals -->
+  <section class="view" data-view="settings" hidden>
+    <header class="tabhead"><h2>Settings</h2></header>
+    <div class="block">
+      <h3 class="kicker">Weigh-in schedule</h3>
       <div class="panel">
-        <div class="head-row">
-          <p class="msg" id="histMsg" role="status">Tap a day to edit it.</p>
-          <button class="btn small ghost" type="button" id="exportBtn">Export CSV</button>
+        <p class="msg">How often you step on the scale. The stall check, trend line, summary and streaks all adjust to it.</p>
+        <div class="seg sched" role="group" aria-label="Weigh-in schedule">
+          <button type="button" data-sched="daily" aria-pressed="false">Daily</button>
+          <button type="button" data-sched="weekly" aria-pressed="false">Weekly</button>
+          <button type="button" data-sched="biweekly" aria-pressed="false">Bi-weekly</button>
         </div>
-        <div class="hist" id="hist"></div>
       </div>
     </div>
-  </section>
-  <section class="view" data-view="goals" hidden>
-    <div class="viewbar"><a class="back" href="#" aria-label="Back to home"><span aria-hidden="true">←</span> Home</a><h2>Goals</h2></div>
-    <div class="view-body">
+    <div class="block">
+      <h3 class="kicker">Goals</h3>
       <div class="panel">
         <div class="goals">
           <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
@@ -140,5 +168,14 @@
     </div>
   </section>
 </div>
+
+<!-- Bottom tab bar -->
+<nav class="tabbar" aria-label="Main">
+  <a href="#home" data-tab="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></a>
+  <a href="#log" data-tab="log"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg><span>Log</span></a>
+  <a href="#progress" data-tab="progress"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5l6 6 4-3 8 9"/><path d="M3 21h18"/></svg><span>Progress</span></a>
+  <a href="#history" data-tab="history"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg><span>History</span></a>
+  <a href="#settings" data-tab="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Settings</span></a>
+</nav>
 </body>
 </html>
