@@ -123,12 +123,25 @@ function render(){
   if(a.pattern){p.hidden=false;p.innerHTML='';const b=document.createElement('b');b.textContent='Weekend pattern: ';p.append(b,`you're on plan ${Math.round(a.pattern.wk*100)}% of weekend days vs ${Math.round(a.pattern.wd*100)}% on weekdays.`);} else p.hidden=true;
   renderChart(a.pts);
   const g=curGoals();
-  setStreak('sLog',streak(()=>true));
+  const logStreak=streak(()=>true);
+  setStreak('sLog',logStreak);
   setStreak('sPlan',streak(e=>e.onPlan===true));
   setStreak('sProt',g.protein?streak(e=>e.protein!=null&&e.protein>=g.protein):0);
-  renderRecap(a.pts);
+  const weekChange=renderRecap(a.pts);
   renderHist(a.days);
   renderBanner();
+  renderPeeks(a,logStreak,weekChange,g);
+}
+// The short value on each home-screen tile, so you can see the key number without opening it.
+function renderPeeks(a,logStreak,weekChange,g){
+  const lp=a.pts[a.pts.length-1];
+  const pc=$('pkCheck'); pc.textContent=a.v.tag; pc.className='t-p '+a.v.cls;
+  $('pkTrend').textContent=lp?fmt(lp.t)+' lb':'';
+  $('pkLog').textContent=entries()[today()]?'Done today ✓':'Not logged today';
+  $('pkStreaks').textContent=logStreak+'d logging';
+  $('pkWeek').textContent=weekChange==null?'':(weekChange>0?'+':'')+fmt(weekChange)+' lb';
+  $('pkHist').textContent=a.days.length+' day'+(a.days.length===1?'':'s');
+  $('pkGoals').textContent=[g.protein?g.protein+' g protein':null,g.steps?g.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||'Not set';
 }
 function setStreak(id,n){const el=$(id);el.textContent=n;const s=document.createElement('small');s.textContent='d';el.append(s);}
 
@@ -148,6 +161,7 @@ function renderRecap(pts){
   ];
   const r=$('recap'); r.innerHTML='';
   for(const[k,val] of rows){const d=document.createElement('div');const a=document.createElement('span');a.textContent=k;const b=document.createElement('span');b.className='num';b.textContent=val;d.append(a,b);r.append(d);}
+  return ch;
 }
 
 function renderHist(days){
@@ -163,7 +177,7 @@ function renderHist(days){
     m.textContent=[e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||'Weight only';
     mid.append(w,m);
     const pl=document.createElement('span');pl.className='pill '+(e.onPlan===true?'yes':e.onPlan===false?'no':'na');pl.textContent=e.onPlan===true?'On plan':e.onPlan===false?'Off plan':'—';
-    b.append(d,mid,pl); b.addEventListener('click',()=>loadIntoForm(e.date)); h.append(b);
+    b.append(d,mid,pl); b.addEventListener('click',()=>editDay(e.date)); h.append(b);
   }
 }
 
@@ -213,7 +227,10 @@ function loadIntoForm(date){
   $('formTitle').textContent=date===today()?'Log today':'Edit '+short(date);
   $('saveBtn').textContent=exists?'Update day':'Save day';
   $('formMsg').textContent=''; $('formMsg').className='msg';
-  if(date!==today()) $('form').scrollIntoView({behavior:'smooth',block:'center'});
+}
+// Tapping a day in History: switch to the Log view with that day loaded.
+function editDay(date){
+  location.hash='log'; loadIntoForm(date);
 }
 $('fDate').addEventListener('change',()=>{if($('fDate').value) loadIntoForm($('fDate').value)});
 const numOrNull=id=>{const v=$(id).value.trim();return v===''?null:Number(v)};
@@ -275,6 +292,58 @@ if(canStore){
 }
 mode=Object.keys(mine).length?'mine':'example';
 fillGoals(); loadIntoForm(today()); render();
+
+/* ---------- home: greeting, clock, daily line ---------- */
+const NAME='Josh';
+function greetingFor(h){
+  if(h>=5&&h<12) return 'Good morning';
+  if(h>=12&&h<17) return 'Good afternoon';
+  if(h>=17&&h<21) return 'Good evening';
+  return 'Goodnight';
+}
+function tick(){
+  const now=new Date();
+  $('greetWord').textContent=greetingFor(now.getHours());
+  $('greetName').textContent=NAME;
+  const day=now.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase();
+  const date=now.toLocaleDateString(undefined,{month:'short',day:'2-digit'}).toUpperCase();
+  $('clock').textContent=day+' · '+date+' · '+pad(now.getHours())+':'+pad(now.getMinutes());
+}
+tick(); setInterval(tick,30000); // keeps the greeting and clock current if the app stays open
+
+// One line per calendar day: the day number picks the quote, so it stays the same all day
+// and changes at midnight. "Another" steps through the list from there.
+const QUOTES=window.CUT_QUOTES||[];
+let quoteShift=0;
+function showQuote(){
+  if(!QUOTES.length){$('quote').hidden=true;return;}
+  const dayNum=Math.floor(parse(today()).getTime()/864e5);
+  const q=QUOTES[((dayNum+quoteShift)%QUOTES.length+QUOTES.length)%QUOTES.length];
+  $('qK').textContent=q.k; $('qT').textContent=q.t; $('qA').textContent=q.a;
+}
+$('qNext').addEventListener('click',()=>{quoteShift++;showQuote();});
+showQuote();
+
+/* ---------- router: home screen <-> section views ---------- */
+// The URL hash says what's on screen: no hash = home, #log = the Log view, and so on.
+// Using the hash means the phone's back gesture returns to the home screen.
+const VIEWS=[...document.querySelectorAll('.view')].map(v=>v.dataset.view);
+let navCount=0; // in-app navigations so far; lets "Home" use history.back() when it can
+function route(){
+  const name=location.hash.slice(1);
+  const view=VIEWS.includes(name)?name:'';
+  $('home').hidden=view!=='';
+  for(const el of document.querySelectorAll('.view')) el.hidden=el.dataset.view!==view;
+  window.scrollTo(0,0);
+}
+window.addEventListener('hashchange',()=>{navCount++;route();});
+for(const b of document.querySelectorAll('.back')){
+  b.addEventListener('click',ev=>{
+    ev.preventDefault();
+    if(navCount>0) history.back(); else location.hash='';
+  });
+}
+route();
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{
