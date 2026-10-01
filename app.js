@@ -9,17 +9,21 @@ const diffDays=(a,b)=>Math.round((parse(b)-parse(a))/864e5);
 const today=()=>ymd(new Date());
 const fmt=(n,dp=1)=>n==null||isNaN(n)?'–':Number(n).toFixed(dp);
 const short=s=>{const d=parse(s);return d.toLocaleDateString(undefined,{month:'short',day:'numeric'})};
+const plural=(n,w)=>n+' '+w+(n===1?'':'s');
 
 let mode='loading'; // 'example' | 'mine' | 'memory'
 let mine={};        // date -> entry (real)
 let example={};
 let goals={protein:null,steps:null};
+let settings={schedule:'daily'};
+let moods={};       // date -> {morning:'locked', evening:'exhausted', ...}
 let onPlan=null;
 
 /* ---------- storage (localStorage) ---------- */
-// Two keys: all logged days as one object keyed by date, and the goals object.
-const KEY_ENTRIES='cutcoach.entries';
-const KEY_GOALS='cutcoach.goals';
+const KEY_ENTRIES='cutcoach.entries';   // all logged days, keyed by date
+const KEY_GOALS='cutcoach.goals';       // protein and step goals
+const KEY_SETTINGS='cutcoach.settings'; // weigh-in schedule
+const KEY_MOODS='cutcoach.moods';       // mood check-ins, keyed by date then time of day
 // localStorage can be missing or throw (private windows, blocked site data, full quota),
 // so every access goes through these wrappers. canStore is false when it can't be used.
 let canStore=false;
@@ -32,6 +36,24 @@ function save(key,value){
 function storageWorks(){
   try{const k='cutcoach.test';localStorage.setItem(k,'1');localStorage.removeItem(k);return true;}catch(e){return false;}
 }
+
+/* ---------- weigh-in schedules ---------- */
+// Everything that depends on how often you weigh in lives here.
+//  every:    days between scheduled weigh-ins
+//  alpha:    how hard each weigh-in pulls the trend line (see series()). Fewer weigh-ins
+//            need a bigger pull, so the trend "remembers" roughly the same 2–4 weeks either way.
+//  win:      days the stall check looks back over
+//  minPts:   weigh-ins needed before the stall check gives a verdict
+//  plateau:  days of history needed before a flat trend counts as a true plateau
+//  chart:    days shown on the trend chart
+//  recap:    days covered by the summary
+const SCHEDULES={
+  daily:   {every:1, alpha:0.1,win:14,minPts:7,plateau:14,chart:42, recap:7, winLabel:'2 weeks',recapLabel:'Last 7 days'},
+  weekly:  {every:7, alpha:0.5,win:42,minPts:3,plateau:28,chart:84, recap:28,winLabel:'6 weeks',recapLabel:'Last 4 weeks'},
+  biweekly:{every:14,alpha:0.6,win:56,minPts:3,plateau:42,chart:112,recap:56,winLabel:'8 weeks',recapLabel:'Last 8 weeks'},
+};
+const sched=()=>SCHEDULES[settings.schedule]||SCHEDULES.daily;
+const isDaily=()=>sched().every===1;
 
 /* ---------- example data (never saved) ---------- */
 function buildExample(){
@@ -53,26 +75,32 @@ const entries=()=>mode==='example'?example:mine;
 const curGoals=()=>mode==='example'?{protein:160,steps:8000}:goals;
 
 /* ---------- analysis ---------- */
+// Trend weight: each weigh-in pulls the trend part of the way toward it (alpha).
 function series(){
-  const days=Object.values(entries()).sort((a,b)=>a.date<b.date?-1:1);
+  const a=sched().alpha;
+  const days=Object.values(entries()).sort((x,y)=>x.date<y.date?-1:1);
   let t=null; const pts=[];
-  for(const e of days){ if(e.weight==null) continue; t = t==null?e.weight:t+0.1*(e.weight-t); pts.push({date:e.date,w:e.weight,t}); }
+  for(const e of days){ if(e.weight==null) continue; t = t==null?e.weight:t+a*(e.weight-t); pts.push({date:e.date,w:e.weight,t}); }
   return {days,pts};
 }
 function trendAt(pts,date){ let v=null; for(const p of pts){ if(p.date<=date) v=p; else break;} return v; }
 
 function analyze(){
-  const {days,pts}=series(); const E=entries();
+  const S=sched(); const {days,pts}=series();
   const ref = days.length? (days[days.length-1].date>today()?days[days.length-1].date:today()) : today();
-  const winStart=addDays(ref,-13);
+  const winStart=addDays(ref,-(S.win-1));
   const inWin=days.filter(e=>e.date>=winStart&&e.date<=ref);
   const planKnown=inWin.filter(e=>e.onPlan!=null);
   const planRate=planKnown.length?planKnown.filter(e=>e.onPlan).length/planKnown.length:null;
-  const logRate=inWin.length/14;
+  // "Logged" means: daily = days with any entry; weekly/bi-weekly = weigh-ins on schedule.
+  const expected=S.win/S.every;
+  // Extra weigh-ins beyond the schedule don't count twice, so the count is capped.
+  const logCount=isDaily()?inWin.length:Math.min(expected,pts.filter(p=>p.date>=winStart&&p.date<=ref).length);
+  const logRate=logCount/expected;
   let rate=null, span=0;
   if(pts.length>=2){
-    const last=pts[pts.length-1]; const back=trendAt(pts,addDays(last.date,-14))||pts[0];
-    span=diffDays(back.date,last.date); if(span>=5) rate=(last.t-back.t)/span*7;
+    const last=pts[pts.length-1]; const back=trendAt(pts,addDays(last.date,-S.win))||pts[0];
+    const rs=diffDays(back.date,last.date); if(rs>=Math.max(5,S.every)) rate=(last.t-back.t)/rs*7;
     span=diffDays(pts[0].date,last.date);
   }
   // weekend pattern over 28 days
@@ -85,88 +113,113 @@ function analyze(){
     if(b-a>=0.25) pattern={wk:a,wd:b};
   }
   const last=pts[pts.length-1], prev=pts[pts.length-2];
+  const how=isDaily()?'Weigh in each morning after the bathroom, before eating.'
+    :`Weigh in ${S.every===7?'once a week':'every two weeks'}, same day and time: in the morning, after the bathroom, before eating.`;
   let v;
-  if(pts.length<7){
-    v={cls:'v-info',tag:'Getting started',head:'Log about a week of weigh-ins to unlock the stall check.',why:`You have ${pts.length} weigh-in${pts.length===1?'':'s'} so far. Daily weight swings by a few pounds from water and salt, so the trend needs some data first.`,do:'Weigh in each morning after the bathroom, before eating.'};
+  if(pts.length<S.minPts){
+    v={cls:'v-info',tag:'Getting started',head:`Log ${isDaily()?'about a week of':S.minPts} weigh-ins to unlock the stall check.`,why:`You have ${plural(pts.length,'weigh-in')} so far. Weight swings by a few pounds from water and salt, so the trend needs a few data points first.`,do:how};
   } else if(rate!=null && rate<=-0.2){
     const scaleUp = last && prev && last.w>prev.w;
     v= scaleUp
-      ? {cls:'v-good',tag:'Normal fluctuation',head:`The scale went up, but your trend is still dropping ${fmt(-rate)} lb a week.`,why:'A one-day jump is almost always water, salt, or a late meal. The trend line smooths that out and it is still heading down.',do:'Nothing to fix. Keep doing what you are doing.'}
-      : {cls:'v-good',tag:'On track',head:`You're losing about ${fmt(-rate)} lb a week on trend.`,why:'Your trend weight has been moving down steadily over the last two weeks.',do:'Keep the plan the same. Don\'t cut harder just because it\'s working.'};
+      ? {cls:'v-good',tag:'Normal fluctuation',head:`The scale went up, but your trend is still dropping ${fmt(-rate)} lb a week.`,why:'A single jump is almost always water, salt, or a late meal. The trend line smooths that out and it is still heading down.',do:'Nothing to fix. Keep doing what you are doing.'}
+      : {cls:'v-good',tag:'On track',head:`You're losing about ${fmt(-rate)} lb a week on trend.`,why:`Your trend weight has been moving down steadily over the last ${S.winLabel}.`,do:'Keep the plan the same. Don\'t cut harder just because it\'s working.'};
   } else if((planRate!=null&&planRate<0.75)||logRate<0.7){
     const bits=[];
     if(planRate!=null&&planRate<0.75) bits.push(`you were on plan ${Math.round(planRate*100)}% of logged days`);
-    if(logRate<0.7) bits.push(`you logged ${inWin.length} of the last 14 days`);
-    v={cls:'v-warn',tag:'Consistency slipping',head:'Your progress stalled because the plan slipped, not because the plan stopped working.',why:`In the last two weeks ${bits.join(' and ')}. Off-plan days can erase several on-plan days.`,do:pattern?'Fix the habit first: plan your weekends ahead of time.':'Fix the habit first. Aim for a full week on plan before changing anything else.'};
-  } else if(span>=14){
+    if(logRate<0.7) bits.push(isDaily()?`you logged ${logCount} of the last 14 days`:`you weighed in ${logCount} of the ${expected} scheduled times`);
+    v={cls:'v-warn',tag:'Consistency slipping',head:'Your progress stalled because the plan slipped, not because the plan stopped working.',why:`In the last ${S.winLabel} ${bits.join(' and ')}. Off-plan days can erase several on-plan days.`,do:pattern?'Fix the habit first: plan your weekends ahead of time.':'Fix the habit first. Aim for a full week on plan before changing anything else.'};
+  } else if(span>=S.plateau){
     v={cls:'v-bad',tag:'True plateau',head:'You\'ve been consistent and the trend is flat. Time to adjust.',why:`You were on plan ${Math.round((planRate||0)*100)}% of days, but your trend moved ${rate==null?'about 0':fmt(rate)} lb/wk. Your body has likely adapted to this intake.`,do:'Make one small change: slightly lower intake, more daily steps, or a 1–2 week diet break at maintenance.'};
   } else {
-    v={cls:'v-info',tag:'Too early to call',head:'The trend is flat, but it\'s too soon to call it a plateau.',why:'Real plateaus show up after two or more consistent weeks. Short flat stretches are common.',do:'Stay consistent and check back next week.'};
+    v={cls:'v-info',tag:'Too early to call',head:'The trend is flat, but it\'s too soon to call it a plateau.',why:`Real plateaus show up after ${S.plateau/7} or more consistent weeks. Short flat stretches are common.`,do:'Stay consistent and check back next week.'};
   }
-  return {v,rate,planRate,inWin:inWin.length,pattern,pts,days};
+  return {v,rate,planRate,logCount,expected,pattern,pts,days};
 }
 
+// Daily streak: consecutive days (back from today, or yesterday if today isn't logged yet).
 function streak(test){
   const E=entries(); let d=today(); if(!E[d]) d=addDays(d,-1); let n=0;
   while(E[d]&&test(E[d])){n++;d=addDays(d,-1);} return n;
 }
+// Weigh-in streak for weekly/bi-weekly: consecutive periods that contain a weigh-in.
+// The current period gets the same grace as "today" above: it doesn't break the streak yet.
+function periodStreak(pts,every){
+  const has=(s,e)=>pts.some(p=>p.date>=s&&p.date<=e);
+  let end=today(), start=addDays(end,-(every-1)), n=0;
+  if(!has(start,end)){end=addDays(start,-1);start=addDays(end,-(every-1));}
+  while(has(start,end)){n++;end=addDays(start,-1);start=addDays(end,-(every-1));}
+  return n;
+}
+// "Next weigh-in" text for the home status card and the Log tab.
+function nextWeighIn(pts){
+  const S=sched(), lastW=pts.length?pts[pts.length-1].date:null;
+  if(isDaily()) return entries()[today()]?.weight!=null?'Weighed in today ✓':'Weigh-in due today';
+  if(!lastW) return 'Weigh-in due';
+  const due=addDays(lastW,S.every), d=diffDays(today(),due);
+  if(d>0) return 'Next weigh-in in '+plural(d,'day');
+  if(d===0) return 'Weigh-in due today';
+  return 'Weigh-in overdue by '+plural(-d,'day');
+}
 
 /* ---------- render ---------- */
 function render(){
-  const a=analyze(); const v=a.v;
-  const box=$('verdict'); box.className='verdict '+v.cls;
+  const S=sched(); const a=analyze(); const v=a.v;
+  $('verdict').className='verdict '+v.cls;
   $('vTag').textContent=v.tag; $('vHead').textContent=v.head; $('vWhy').textContent=v.why; $('vDo').textContent=v.do;
   $('fRate').textContent=a.rate==null?'–':(a.rate>0?'+':'')+fmt(a.rate,2);
   $('fPlan').textContent=a.planRate==null?'–':Math.round(a.planRate*100)+'%';
-  $('fLog').textContent=a.inWin+'/14';
+  $('fPlanLbl').textContent='On plan, '+S.win+'d';
+  $('fLog').textContent=a.logCount+'/'+a.expected;
+  $('fLogLbl').textContent=isDaily()?'Days logged':'Weigh-ins';
   const p=$('pattern');
   if(a.pattern){p.hidden=false;p.innerHTML='';const b=document.createElement('b');b.textContent='Weekend pattern: ';p.append(b,`you're on plan ${Math.round(a.pattern.wk*100)}% of weekend days vs ${Math.round(a.pattern.wd*100)}% on weekdays.`);} else p.hidden=true;
   renderChart(a.pts);
   const g=curGoals();
-  const logStreak=streak(()=>true);
-  setStreak('sLog',logStreak);
-  setStreak('sPlan',streak(e=>e.onPlan===true));
-  setStreak('sProt',g.protein?streak(e=>e.protein!=null&&e.protein>=g.protein):0);
-  const weekChange=renderRecap(a.pts);
+  if(isDaily()){setStreak('sLog',streak(()=>true),'d');$('sLogLbl').textContent='Logging';}
+  else{setStreak('sLog',periodStreak(a.pts,S.every)*S.every/7,'wk');$('sLogLbl').textContent='Weigh-ins on schedule';}
+  setStreak('sPlan',streak(e=>e.onPlan===true),'d');
+  setStreak('sProt',g.protein?streak(e=>e.protein!=null&&e.protein>=g.protein):0,'d');
+  renderRecap(a.pts);
   renderHist(a.days);
   renderBanner();
-  renderPeeks(a,logStreak,weekChange,g);
+  // home status card + tab subtitles
+  const lp=a.pts[a.pts.length-1], next=nextWeighIn(a.pts);
+  const t=$('hsTag'); t.textContent=v.tag; t.className='tag '+v.cls;
+  $('hsTrend').textContent=lp?'Trend '+fmt(lp.t)+' lb':'No weigh-ins yet';
+  $('hsNext').textContent=next;
+  $('logHint').textContent=isDaily()?next+'.':next+'. Weight is optional on other days; you can still log food, steps and the plan.';
+  $('progSub').textContent=(isDaily()?'Daily':S.every===7?'Weekly':'Bi-weekly')+' weigh-ins · change in Settings';
+  for(const b of document.querySelectorAll('[data-sched]')) b.setAttribute('aria-pressed',b.dataset.sched===settings.schedule);
 }
-// The short value on each home-screen tile, so you can see the key number without opening it.
-function renderPeeks(a,logStreak,weekChange,g){
-  const lp=a.pts[a.pts.length-1];
-  const pc=$('pkCheck'); pc.textContent=a.v.tag; pc.className='t-p '+a.v.cls;
-  $('pkTrend').textContent=lp?fmt(lp.t)+' lb':'';
-  $('pkLog').textContent=entries()[today()]?'Done today ✓':'Not logged today';
-  $('pkStreaks').textContent=logStreak+'d logging';
-  $('pkWeek').textContent=weekChange==null?'':(weekChange>0?'+':'')+fmt(weekChange)+' lb';
-  $('pkHist').textContent=a.days.length+' day'+(a.days.length===1?'':'s');
-  $('pkGoals').textContent=[g.protein?g.protein+' g protein':null,g.steps?g.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||'Not set';
-}
-function setStreak(id,n){const el=$(id);el.textContent=n;const s=document.createElement('small');s.textContent='d';el.append(s);}
+function setStreak(id,n,unit){const el=$(id);el.textContent=n;const s=document.createElement('small');s.textContent=unit;el.append(s);}
 
+// Summary over the schedule's period: 7 days, 4 weeks or 8 weeks.
 function renderRecap(pts){
-  const E=entries(); const end=today(); const start=addDays(end,-6);
-  const wk=Object.values(E).filter(e=>e.date>=start&&e.date<=end);
-  const avg=k=>{const v=wk.map(e=>e[k]).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null};
+  const S=sched(); const end=today(); const start=addDays(end,-(S.recap-1));
+  const span=Object.values(entries()).filter(e=>e.date>=start&&e.date<=end);
+  const avg=k=>{const v=span.map(e=>e[k]).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null};
   const tEnd=trendAt(pts,end), tStart=trendAt(pts,addDays(start,-1));
   const ch=tEnd&&tStart?tEnd.t-tStart.t:null;
+  const weighs=pts.filter(p=>p.date>=start&&p.date<=end).length;
+  const answered=span.filter(e=>e.onPlan!=null).length;
   const rows=[
     ['Trend change',ch==null?'–':(ch>0?'+':'')+fmt(ch)+' lb'],
-    ['Days on plan',wk.filter(e=>e.onPlan).length+' / 7'],
+    ['Weigh-ins',weighs+' / '+S.recap/S.every],
+    ['Avg weight',avg('weight')==null?'–':fmt(avg('weight'))+' lb'],
+    ['Days on plan',answered?span.filter(e=>e.onPlan).length+' / '+answered:'–'],
     ['Avg protein',avg('protein')==null?'–':Math.round(avg('protein'))+' g'],
     ['Avg steps',avg('steps')==null?'–':Math.round(avg('steps')).toLocaleString()],
     ['Avg calories',avg('calories')==null?'–':Math.round(avg('calories')).toLocaleString()],
-    ['Days logged',wk.length+' / 7'],
+    ['Days logged',span.length+' / '+S.recap],
   ];
+  $('recapTitle').textContent=S.recapLabel;
   const r=$('recap'); r.innerHTML='';
   for(const[k,val] of rows){const d=document.createElement('div');const a=document.createElement('span');a.textContent=k;const b=document.createElement('span');b.className='num';b.textContent=val;d.append(a,b);r.append(d);}
-  return ch;
 }
 
 function renderHist(days){
   const h=$('hist'); h.innerHTML='';
-  const list=[...days].reverse().slice(0,21);
+  const list=[...days].reverse().slice(0,30);
   if(!list.length){const p=document.createElement('p');p.className='empty';p.textContent='No days logged yet. Your first entry will show up here.';h.append(p);return;}
   for(const e of list){
     const b=document.createElement('button');b.type='button';b.className='row';
@@ -174,7 +227,7 @@ function renderHist(days){
     const mid=document.createElement('span');mid.style.minWidth='0';
     const w=document.createElement('span');w.className='w';w.textContent=e.weight!=null?fmt(e.weight):'—';
     const m=document.createElement('div');m.className='meta';
-    m.textContent=[e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||'Weight only';
+    m.textContent=[e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||(e.weight!=null?'Weight only':'Habits only');
     mid.append(w,m);
     const pl=document.createElement('span');pl.className='pill '+(e.onPlan===true?'yes':e.onPlan===false?'no':'na');pl.textContent=e.onPlan===true?'On plan':e.onPlan===false?'Off plan':'—';
     b.append(d,mid,pl); b.addEventListener('click',()=>editDay(e.date)); h.append(b);
@@ -182,9 +235,9 @@ function renderHist(days){
 }
 
 function renderChart(pts){
-  const el=$('chart');
+  const el=$('chart'); const S=sched();
   const end=pts.length?pts[pts.length-1].date:today();
-  const start=addDays(end,-41);
+  const start=addDays(end,-(S.chart-1));
   const P=pts.filter(p=>p.date>=start);
   if(P.length<2){el.innerHTML='<p class="empty">Your trend line appears after two weigh-ins.</p>';return;}
   const W=600,H=230,L=40,R=58,T=14,B=28;
@@ -195,12 +248,13 @@ function renderChart(pts){
   const x=d=>L+diffDays(P[0].date,d)/n*(W-L-R);
   const y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
   const step=Math.max(1,Math.ceil((hi-lo)/4));
-  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Trend weight over the last six weeks">`;
+  const dotR=isDaily()?2.6:4;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Trend weight over the last ${S.chart/7} weeks">`;
   for(let v=Math.ceil(lo/step)*step; v<=hi; v+=step){s+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text class="axis" x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`;}
   s+=`<text class="axis" x="${L}" y="${H-8}">${short(P[0].date)}</text><text class="axis" x="${W-R}" y="${H-8}" text-anchor="end">${short(end)}</text>`;
   const line=P.map((p,i)=>(i?'L':'M')+x(p.date).toFixed(1)+' '+y(p.t).toFixed(1)).join(' ');
   s+=`<path class="area" d="${line} L${x(end).toFixed(1)} ${H-B} L${x(P[0].date).toFixed(1)} ${H-B} Z"/>`;
-  for(const p of P) s+=`<circle class="raw" cx="${x(p.date).toFixed(1)}" cy="${y(p.w).toFixed(1)}" r="2.6"/>`;
+  for(const p of P) s+=`<circle class="raw" cx="${x(p.date).toFixed(1)}" cy="${y(p.w).toFixed(1)}" r="${dotR}"/>`;
   s+=`<path class="trend" d="${line}"/>`;
   const lp=P[P.length-1];
   s+=`<circle class="end" cx="${x(lp.date)}" cy="${y(lp.t)}" r="5"/><text class="endlbl" x="${x(lp.date)+9}" y="${y(lp.t)+5}">${fmt(lp.t)}</text></svg>`;
@@ -209,7 +263,7 @@ function renderChart(pts){
 
 function renderBanner(){
   const b=$('banner'); b.innerHTML='';
-  if(mode==='example'){b.hidden=false;const t=document.createElement('span');t.innerHTML='<b>Example data.</b> These numbers are made up to show how the app works. Save your first day and they disappear.';b.append(t);}
+  if(mode==='example'){b.hidden=false;const t=document.createElement('span');t.innerHTML='<b>Example data.</b> Made-up numbers to show how the app works. Log your first day and they disappear.';b.append(t);}
   else if(mode==='memory'){b.hidden=false;b.textContent='This browser is blocking storage, so entries last only until you close the page. Use Export CSV to keep a copy.';}
   else b.hidden=true;
 }
@@ -228,10 +282,8 @@ function loadIntoForm(date){
   $('saveBtn').textContent=exists?'Update day':'Save day';
   $('formMsg').textContent=''; $('formMsg').className='msg';
 }
-// Tapping a day in History: switch to the Log view with that day loaded.
-function editDay(date){
-  location.hash='log'; loadIntoForm(date);
-}
+// Tapping a day in History: switch to the Log tab with that day loaded.
+function editDay(date){ location.hash='log'; loadIntoForm(date); }
 $('fDate').addEventListener('change',()=>{if($('fDate').value) loadIntoForm($('fDate').value)});
 const numOrNull=id=>{const v=$(id).value.trim();return v===''?null:Number(v)};
 $('form').addEventListener('submit',ev=>{
@@ -254,13 +306,21 @@ $('delBtn').addEventListener('click',()=>{
   if(canStore&&!save(KEY_ENTRIES,mine)){$('formMsg').className='msg err';$('formMsg').textContent='Couldn\'t delete. Try again.';}
 });
 
-/* ---------- goals ---------- */
+/* ---------- settings: goals + weigh-in schedule ---------- */
 function fillGoals(){$('gProt').value=goals.protein??'';$('gSteps').value=goals.steps??'';}
 $('goalSave').addEventListener('click',()=>{
   goals={protein:numOrNull('gProt'),steps:numOrNull('gSteps')};
   render(); $('goalMsg').textContent='Saved.';
   if(canStore&&!save(KEY_GOALS,goals)) $('goalMsg').textContent='Couldn\'t save goals. Try again.';
 });
+// The schedule buttons appear in both Progress and Settings; they share one setting.
+for(const b of document.querySelectorAll('[data-sched]')){
+  b.addEventListener('click',()=>{
+    settings={...settings,schedule:b.dataset.sched};
+    if(canStore) save(KEY_SETTINGS,settings);
+    render();
+  });
+}
 
 /* ---------- export ---------- */
 // Builds a CSV of your real entries (never the example data), oldest first,
@@ -280,18 +340,54 @@ $('exportBtn').addEventListener('click',()=>{
   const a=document.createElement('a'); a.href=url; a.download='cut-coach-'+today()+'.csv';
   document.body.append(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  msg.textContent='Exported '+days.length+' day'+(days.length===1?'':'s')+'.';
+  msg.textContent='Exported '+plural(days.length,'day')+'.';
 });
 
-/* ---------- boot ---------- */
-example=buildExample();
-canStore=storageWorks();
-if(canStore){
-  mine=load(KEY_ENTRIES,{});
-  goals={protein:null,steps:null,...load(KEY_GOALS,{})};
+/* ---------- mood check-ins ---------- */
+// Four check-ins a day, matching the greeting: morning 5–12, afternoon 12–5, evening 5–9,
+// night 9pm–5am. Night runs past midnight, so 1am still counts as the previous day's night.
+// Your latest check-in today sets the color theme (data-mood on <html>; see styles.css).
+const SLOTS=['morning','afternoon','evening','night'];
+const SLOT_NAMES={morning:'Morning',afternoon:'Afternoon',evening:'Evening',night:'Night'};
+const MOOD_NAMES={exhausted:'Exhausted',locked:'Locked in',energetic:'Energetic'};
+const THEME_BG={exhausted:'#0a0b0d',locked:'#0a0304',energetic:'#0c0612'};
+function slotFor(h){ return h>=5&&h<12?'morning':h>=12&&h<17?'afternoon':h>=17&&h<21?'evening':'night'; }
+function moodDate(now){ const d=new Date(now); if(d.getHours()<5) d.setDate(d.getDate()-1); return ymd(d); }
+function currentMood(now){
+  const day=moods[moodDate(now)]||{};
+  for(let i=SLOTS.indexOf(slotFor(now.getHours()));i>=0;i--) if(day[SLOTS[i]]) return day[SLOTS[i]];
+  return null;
 }
-mode=Object.keys(mine).length?'mine':'example';
-fillGoals(); loadIntoForm(today()); render();
+function renderMood(){
+  const now=new Date(), slot=slotFor(now.getHours()), day=moods[moodDate(now)]||{}, picked=day[slot]||null;
+  const cur=currentMood(now);
+  if(cur) document.documentElement.dataset.mood=cur; else delete document.documentElement.dataset.mood;
+  document.querySelector('meta[name="theme-color"]').content=THEME_BG[cur]||'#05070b';
+  $('moodSlot').textContent=SLOT_NAMES[slot]+' check-in';
+  $('moodQ').textContent=picked?'Feeling '+MOOD_NAMES[picked].toLowerCase()+'. Tap to change.':'How are you feeling?';
+  $('moodNow').textContent=cur?MOOD_NAMES[cur]:'';
+  for(const b of document.querySelectorAll('.mood-btn')) b.setAttribute('aria-pressed',b.dataset.mood===picked);
+  // The day's four slots as a row of dots, colored by the mood you picked.
+  const row=$('moodDay'); row.innerHTML='';
+  const nowIdx=SLOTS.indexOf(slot);
+  SLOTS.forEach((s,i)=>{
+    const el=document.createElement('span'); el.className='slot'+(i===nowIdx?' now':'')+(i>nowIdx?' later':'');
+    const dot=document.createElement('i'); dot.className='slot-dot'+(day[s]?' m-'+day[s]:'');
+    const lbl=document.createElement('span'); lbl.textContent=SLOT_NAMES[s];
+    el.title=SLOT_NAMES[s]+': '+(day[s]?MOOD_NAMES[day[s]]:'no check-in');
+    el.append(dot,lbl); row.append(el);
+  });
+}
+for(const b of document.querySelectorAll('.mood-btn')){
+  b.addEventListener('click',()=>{
+    const now=new Date(), d=moodDate(now), slot=slotFor(now.getHours());
+    const day={...(moods[d]||{})};
+    if(day[slot]===b.dataset.mood) delete day[slot]; else day[slot]=b.dataset.mood; // tap again to clear
+    moods={...moods,[d]:day};
+    if(canStore) save(KEY_MOODS,moods);
+    renderMood();
+  });
+}
 
 /* ---------- home: greeting, clock, daily line ---------- */
 const NAME='Josh';
@@ -308,8 +404,8 @@ function tick(){
   const day=now.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase();
   const date=now.toLocaleDateString(undefined,{month:'short',day:'2-digit'}).toUpperCase();
   $('clock').textContent=day+' · '+date+' · '+pad(now.getHours())+':'+pad(now.getMinutes());
+  renderMood(); // a new time of day means a new check-in slot
 }
-tick(); setInterval(tick,30000); // keeps the greeting and clock current if the app stays open
 
 // One line per calendar day: the day number picks the quote, so it stays the same all day
 // and changes at midnight. "Another" steps through the list from there.
@@ -322,33 +418,42 @@ function showQuote(){
   $('qK').textContent=q.k; $('qT').textContent=q.t; $('qA').textContent=q.a;
 }
 $('qNext').addEventListener('click',()=>{quoteShift++;showQuote();});
-showQuote();
 
-/* ---------- router: home screen <-> section views ---------- */
-// The URL hash says what's on screen: no hash = home, #log = the Log view, and so on.
-// Using the hash means the phone's back gesture returns to the home screen.
-const VIEWS=[...document.querySelectorAll('.view')].map(v=>v.dataset.view);
-let navCount=0; // in-app navigations so far; lets "Home" use history.back() when it can
+/* ---------- router: bottom tabs ---------- */
+// The URL hash says which tab is showing (#home, #log, #progress, #history, #settings).
+// Each tab gets its own history entry, so the phone's back gesture works.
+const TABS=[...document.querySelectorAll('.view')].map(v=>v.dataset.view);
 function route(){
-  const name=location.hash.slice(1);
-  const view=VIEWS.includes(name)?name:'';
-  $('home').hidden=view!=='';
-  for(const el of document.querySelectorAll('.view')) el.hidden=el.dataset.view!==view;
+  let tab=location.hash.slice(1); if(!TABS.includes(tab)) tab='home';
+  for(const el of document.querySelectorAll('.view')) el.hidden=el.dataset.view!==tab;
+  for(const a of document.querySelectorAll('.tabbar a')){
+    if(a.dataset.tab===tab) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
+  }
   window.scrollTo(0,0);
 }
-window.addEventListener('hashchange',()=>{navCount++;route();});
-for(const b of document.querySelectorAll('.back')){
-  b.addEventListener('click',ev=>{
-    ev.preventDefault();
-    if(navCount>0) history.back(); else location.hash='';
-  });
+window.addEventListener('hashchange',route);
+
+/* ---------- boot ---------- */
+example=buildExample();
+canStore=storageWorks();
+if(canStore){
+  mine=load(KEY_ENTRIES,{});
+  goals={protein:null,steps:null,...load(KEY_GOALS,{})};
+  settings={schedule:'daily',...load(KEY_SETTINGS,{})};
+  moods=load(KEY_MOODS,{});
 }
+mode=Object.keys(mine).length?'mine':'example';
+fillGoals(); loadIntoForm(today()); render();
+tick(); setInterval(tick,30000); // keeps the greeting, clock and check-in slot current
+showQuote();
 route();
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{
   if(ev.key===KEY_ENTRIES){mine=load(KEY_ENTRIES,{});if(Object.keys(mine).length) mode='mine';}
   else if(ev.key===KEY_GOALS){goals={protein:null,steps:null,...load(KEY_GOALS,{})};fillGoals();}
+  else if(ev.key===KEY_SETTINGS){settings={schedule:'daily',...load(KEY_SETTINGS,{})};}
+  else if(ev.key===KEY_MOODS){moods=load(KEY_MOODS,{});renderMood();return;}
   else return;
   render();
 });
