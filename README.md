@@ -38,6 +38,11 @@ Each day can have any of these fields. All are optional, but you need at least o
   - **Energy:** 1 = drained, 5 = charged.
   - **Sleep quality:** 1 = terrible, 5 = great. This is last night's sleep.
 
+- **Progress photo** (Log tab): one photo per date. You can take it with the camera
+  or pick it from your library. It saves as soon as you choose it, and you can
+  replace or remove it there too. The field also says when the next photo is due
+  on your weigh-in schedule.
+
   From 5pm the home screen shows the debrief card, and a tap saves straight into
   that day's entry. Tap the same number again to clear it. The card stays until
   5am, and after midnight it still rates the previous day. You can also rate any
@@ -51,7 +56,7 @@ The app has five tabs in a bar at the bottom of the screen:
 |-----|--------------|
 | **Home** | Greeting, today's line, mood check-in, end-of-day debrief (from 5pm), and a one-line status (verdict, trend weight, next weigh-in). Tap the status to open Progress. |
 | **Log** | The entry form for today or any other date |
-| **Progress** | Stall check, trend chart, summary for your schedule's period, body signals, and streaks |
+| **Progress** | Stall check, trend chart, summary for your schedule's period, body signals, visual log (progress photos), and streaks |
 | **History** | Your logged days, newest first, and **Export CSV** |
 | **Settings** | Weigh-in schedule and goals |
 
@@ -95,6 +100,13 @@ and shows each as a 5-segment meter. It adds up to two plain-language notes:
 - **High hunger:** average hunger of 4 or more.
 - **Low energy:** average energy of 2 or less.
 - **Poor sleep:** average sleep of 2.5 or less.
+
+### Visual log (Progress tab)
+
+Once you have two progress photos, the visual log puts your **first** and **latest**
+side by side, with each one's date and weight and the change between them (for
+example "−2.8 lb over 2 weeks"). Below that is every photo, newest first. Tap any
+photo to view it full screen, then swipe through with ‹ and ›.
 
 ### Mood check-ins and color themes
 
@@ -162,6 +174,12 @@ Everything is stored in your browser's `localStorage`, under these keys:
 - `cutcoach.goals`: your protein and step goals
 - `cutcoach.settings`: your weigh-in schedule
 - `cutcoach.moods`: mood check-ins, keyed by date and then time of day
+
+**Progress photos** are too big for `localStorage`, so they're kept in the browser's
+IndexedDB database (`pinche-guey`, store `photos`), keyed by date. Before saving,
+each photo is shrunk to 1280px on its long side and re-encoded as JPEG, which
+comes to roughly 150–300 KB. The app also asks the browser to keep this data
+persistent. Photos stay on your phone and aren't part of the CSV export.
 
 The keys still start with `cutcoach.` from the app's original name. Renaming them would
 have orphaned the data you'd already logged.
