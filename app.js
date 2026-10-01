@@ -483,10 +483,26 @@ for(const b of document.querySelectorAll('.mood-btn')){
     const now=new Date(), d=moodDate(now), slot=slotFor(now.getHours());
     const day={...(moods[d]||{})};
     if(day[slot]===b.dataset.mood) delete day[slot]; else day[slot]=b.dataset.mood; // tap again to clear
+    const before=currentMood(now);
     moods={...moods,[d]:day};
     if(canStore) save(KEY_MOODS,moods);
+    if(currentMood(now)!==before) lightsOn(b); // only when the theme actually changes
     renderMood();
   });
+}
+// The lights-on sweep: starts dark, then light spreads from the tapped button (styles.css).
+let lightsTimer=0;
+function lightsOn(fromEl){
+  if(reduceMotion) return;
+  const lw=$('lightwave'), r=fromEl.getBoundingClientRect();
+  lw.style.setProperty('--x',(r.left+r.width/2)+'px');
+  lw.style.setProperty('--y',(r.top+r.height/2)+'px');
+  // Radius that just clears the farthest corner, so the light's edge is visible the whole way.
+  const cx=r.left+r.width/2, cy=r.top+r.height/2, W=innerWidth, H=innerHeight;
+  lw.style.setProperty('--lmax',Math.ceil(Math.hypot(Math.max(cx,W-cx),Math.max(cy,H-cy))+90)+'px');
+  lw.hidden=false; lw.classList.remove('go'); void lw.offsetWidth; lw.classList.add('go'); // restart animations
+  clearTimeout(lightsTimer);
+  lightsTimer=setTimeout(()=>{lw.hidden=true;lw.classList.remove('go');},1500);
 }
 
 /* ---------- home: greeting, clock, daily line ---------- */
