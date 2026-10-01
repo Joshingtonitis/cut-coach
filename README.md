@@ -1,6 +1,7 @@
-# Cut Coach
+# Pinche Güey
 
-A small, no-build web app for tracking a weight cut. You log your weight and a few
+A small, no-build web app for tracking a weight cut, styled like a control
+interface from a few decades ahead. You log your weight and a few
 habits each day. It shows your **trend weight** and checks whether you're on track.
 When the scale stops moving, it tells you **why**: you're still losing and the
 scale is just noisy, your consistency slipped, or you've hit a real plateau.
@@ -19,8 +20,8 @@ npx serve .        # or: python3 -m http.server
 | File         | What's in it                                                        |
 |--------------|---------------------------------------------------------------------|
 | `index.html` | The five tabs (Home, Log, Progress, History, Settings) and the bottom tab bar |
-| `styles.css` | All styling: a dark, high-tech theme built on CSS variables, plus the three mood themes |
-| `app.js`     | Data storage, weigh-in schedules, the stall-check analysis, rendering, CSV export, the greeting, mood check-ins and tab navigation |
+| `styles.css` | All styling: the sci-fi HUD theme built on CSS variables, the three mood themes, and the intro animation |
+| `app.js`     | Data storage, weigh-in schedules, the stall-check analysis, end-of-day debrief and body signals, rendering, CSV export, the greeting, intro, mood check-ins and tab navigation |
 | `quotes.js`  | The list of daily lines shown on the home screen. Add your own here |
 | `icons/`     | App icon: `icon.svg` (source), `favicon.svg`, and PNGs for the home screen |
 | `manifest.json` | Name and icons used when the app is added to a home screen     |
@@ -32,6 +33,15 @@ Each day can have any of these fields. All are optional, but you need at least o
 - **Weight** (lb). The stall check runs on this.
 - **Calories**, **protein** (g), **steps**
 - **Stuck to plan?** Yes or no. This is your own honest call for the day.
+- **End-of-day debrief:** three 1–5 ratings.
+  - **Hunger:** 1 = not hungry, 5 = starving.
+  - **Energy:** 1 = drained, 5 = charged.
+  - **Sleep quality:** 1 = terrible, 5 = great. This is last night's sleep.
+
+  From 5pm the home screen shows the debrief card, and a tap saves straight into
+  that day's entry. Tap the same number again to clear it. The card stays until
+  5am, and after midnight it still rates the previous day. You can also rate any
+  day from the Log tab.
 
 ## Layout
 
@@ -39,15 +49,30 @@ The app has five tabs in a bar at the bottom of the screen:
 
 | Tab | What's on it |
 |-----|--------------|
-| **Home** | Greeting, today's line, mood check-in, and a one-line status (verdict, trend weight, next weigh-in). Tap the status to open Progress. |
+| **Home** | Greeting, today's line, mood check-in, end-of-day debrief (from 5pm), and a one-line status (verdict, trend weight, next weigh-in). Tap the status to open Progress. |
 | **Log** | The entry form for today or any other date |
-| **Progress** | Stall check, trend chart, summary for your schedule's period, and streaks |
+| **Progress** | Stall check, trend chart, summary for your schedule's period, body signals, and streaks |
 | **History** | Your logged days, newest first, and **Export CSV** |
 | **Settings** | Weigh-in schedule and goals |
 
 Each tab has its own address (`#home`, `#log`, …), so your phone's back gesture
 works. To add a feature later, add a `<section class="view" data-view="name">` to
 `index.html` and a matching link in the tab bar, or put it inside an existing tab.
+
+### Intro animation
+
+Every time the app opens it plays a short boot sequence, about 3 seconds:
+
+1. System lines type in.
+2. A scan line sweeps across the screen.
+3. The greeting ("GOOD MORNING", etc.) decodes out of random glyphs.
+4. **JOSH** assembles letter by letter with a glow.
+5. The overlay dissolves into the app.
+
+Tap anywhere to skip. On a phone, an app you switch back to often doesn't reload,
+so the intro also replays when you return after more than 10 minutes away. If your
+phone has **Reduce Motion** turned on, it shows a simple fade instead. The sequence
+is in `playIntro()` in `app.js` and the `.intro` styles in `styles.css`.
 
 ### Home screen
 
@@ -59,6 +84,17 @@ works. To add a feature later, add a `<section class="view" data-view="name">` t
   all day and changes at midnight. Tap **Another** for a different one. To add or
   edit lines, change `quotes.js`.
 - **Mood check-in.** See below.
+
+### Body signals (Progress tab)
+
+This panel averages your hunger, energy and sleep ratings over the summary period
+and shows each as a 5-segment meter. It adds up to two plain-language notes:
+
+- **Sleep and hunger:** with at least 3 bad nights (sleep 1–2) and 3 good nights
+  (sleep 4–5), it compares your hunger after each and calls out a gap of 0.7 or more.
+- **High hunger:** average hunger of 4 or more.
+- **Low energy:** average energy of 2 or less.
+- **Poor sleep:** average sleep of 2.5 or less.
 
 ### Mood check-ins and color themes
 
@@ -111,10 +147,13 @@ see how it works. The example data is never saved or exported.
 
 Everything is stored in your browser's `localStorage`, under these keys:
 
-- `cutcoach.entries`: every logged day, as an object keyed by date (`YYYY-MM-DD`)
+- `cutcoach.entries`: every logged day, as an object keyed by date (`YYYY-MM-DD`), including the debrief ratings
 - `cutcoach.goals`: your protein and step goals
 - `cutcoach.settings`: your weigh-in schedule
 - `cutcoach.moods`: mood check-ins, keyed by date and then time of day
+
+The keys still start with `cutcoach.` from the app's original name. Renaming them would
+have orphaned the data you'd already logged.
 
 Nothing is sent anywhere. That also means the data belongs to **this browser on
 this device**. Clearing site data, or opening the app in a different browser,
@@ -123,13 +162,13 @@ a banner warns you that entries will only last until you close the page.
 
 ### Export CSV
 
-**Export CSV** on the History tab downloads `cut-coach-YYYY-MM-DD.csv` with one
+**Export CSV** on the History tab downloads `pinche-guey-YYYY-MM-DD.csv` with one
 row per logged day, oldest first:
 
 ```
-date,weight_lb,trend_lb,calories,protein_g,steps,on_plan
-2026-09-29,183,183.00,,,,no
-2026-10-01,182.4,182.94,,150,,yes
+date,weight_lb,trend_lb,calories,protein_g,steps,on_plan,hunger_1to5,energy_1to5,sleep_1to5
+2026-09-29,183,183.00,,,,no,,,
+2026-10-01,182.4,182.94,,150,,yes,4,3,2
 ```
 
 Empty cells mean you didn't log that field. `trend_lb` is the smoothed trend

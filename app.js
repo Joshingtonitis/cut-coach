@@ -1,4 +1,4 @@
-// Cut Coach — weight-cut tracker. All data lives in this browser's localStorage.
+// Pinche Güey — weight-cut tracker. All data lives in this browser's localStorage.
 (function(){
 const $=id=>document.getElementById(id);
 const pad=n=>String(n).padStart(2,'0');
@@ -18,6 +18,7 @@ let goals={protein:null,steps:null};
 let settings={schedule:'daily'};
 let moods={};       // date -> {morning:'locked', evening:'exhausted', ...}
 let onPlan=null;
+let ratings={hunger:null,energy:null,sleep:null}; // debrief ratings currently in the Log form
 
 /* ---------- storage (localStorage) ---------- */
 const KEY_ENTRIES='cutcoach.entries';   // all logged days, keyed by date
@@ -161,6 +162,101 @@ function nextWeighIn(pts){
   return 'Weigh-in overdue by '+plural(-d,'day');
 }
 
+/* ---------- end-of-day debrief: hunger, energy, sleep (1–5) ---------- */
+// Stored on each day's entry as hunger/energy/sleep. The labels say which end is which,
+// because "5" means opposite things: starving for hunger, great for sleep.
+const METRICS=[
+  {k:'hunger',name:'Hunger',lo:'Not hungry',hi:'Starving'},
+  {k:'energy',name:'Energy',lo:'Drained',hi:'Charged'},
+  {k:'sleep', name:'Sleep quality',lo:'Terrible',hi:'Great'},
+];
+const hasRatings=e=>METRICS.some(m=>e[m.k]!=null);
+// Builds the three 1–5 rows inside a container. onPick(metric, value) runs on tap.
+function buildRates(box,onPick){
+  for(const m of METRICS){
+    const row=document.createElement('div'); row.className='rate-row';
+    const name=document.createElement('span'); name.className='rate-name'; name.textContent=m.name;
+    const scale=document.createElement('div'); scale.className='rate-scale'; scale.setAttribute('role','group'); scale.setAttribute('aria-label',m.name+', 1 to 5');
+    for(let v=1;v<=5;v++){
+      const b=document.createElement('button'); b.type='button'; b.textContent=v; b.dataset.k=m.k; b.dataset.v=v;
+      b.setAttribute('aria-label',m.name+' '+v+(v===1?' ('+m.lo+')':v===5?' ('+m.hi+')':''));
+      b.setAttribute('aria-pressed','false');
+      b.addEventListener('click',()=>onPick(m.k,v));
+      scale.append(b);
+    }
+    const ends=document.createElement('div'); ends.className='rate-ends';
+    const lo=document.createElement('span'); lo.textContent=m.lo; const hi=document.createElement('span'); hi.textContent=m.hi;
+    ends.append(lo,hi);
+    row.append(name,scale,ends); box.append(row);
+  }
+}
+// Lights up the chosen value in each row (and every value below it, like a meter).
+function paintRates(box,vals){
+  for(const b of box.querySelectorAll('button')){
+    const cur=vals[b.dataset.k], v=+b.dataset.v;
+    b.setAttribute('aria-pressed',cur===v); b.classList.toggle('lit',cur!=null&&v<=cur);
+  }
+}
+// Home debrief: a tap saves straight into that day's entry (tap the same value to clear).
+function rateDay(date,k,v){
+  if(mode==='example') mode=canStore?'mine':'memory';
+  const e={date,weight:null,calories:null,protein:null,steps:null,onPlan:null,hunger:null,energy:null,sleep:null,...(mine[date]||{})};
+  e[k]=e[k]===v?null:v;
+  const empty=e.weight==null&&e.calories==null&&e.protein==null&&e.steps==null&&e.onPlan==null&&!hasRatings(e);
+  if(empty) delete mine[date]; else mine[date]=e;
+  if(canStore) save(KEY_ENTRIES,mine);
+  if($('fDate').value===date){ ratings={...ratings,[k]:e[k]}; paintRates($('formRates'),ratings); }
+  render();
+}
+// The debrief card shows from 5pm until 5am (the evening and night check-in slots).
+// After midnight it still rates the previous day, same as the night mood check-in.
+function renderDebrief(){
+  const now=new Date(), slot=slotFor(now.getHours());
+  const card=$('debriefCard'); card.hidden=!(slot==='evening'||slot==='night');
+  if(card.hidden) return;
+  const date=moodDate(now), e=entries()[date]||{};
+  const vals={hunger:e.hunger??null,energy:e.energy??null,sleep:e.sleep??null};
+  const done=METRICS.filter(m=>vals[m.k]!=null).length;
+  $('debriefState').textContent=done===3?'Logged ✓':done?done+' / 3':'';
+  $('debriefQ').textContent=done===3?'Debrief saved. Tap to change.':(date===today()?'Rate today, 1 to 5.':'Rate '+short(date)+', 1 to 5.');
+  card.dataset.date=date;
+  paintRates($('debriefRates'),mode==='example'?{}:vals);
+}
+// Progress → Body signals: averages over the summary period, plus a few plain-language notes.
+function renderSignals(){
+  const S=sched(), end=today(), start=addDays(end,-(S.recap-1));
+  const all=Object.values(entries()).filter(hasRatings);
+  const span=all.filter(e=>e.date>=start&&e.date<=end);
+  const avg=(list,k)=>{const v=list.map(e=>e[k]).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null};
+  const box=$('signals'); box.innerHTML='';
+  const a={};
+  for(const m of METRICS){
+    a[m.k]=avg(span,m.k);
+    const row=document.createElement('div'); row.className='sig-row';
+    const name=document.createElement('span'); name.className='sig-name'; name.textContent=m.name;
+    const meter=document.createElement('span'); meter.className='sig-meter';
+    const fill=document.createElement('i'); fill.style.width=a[m.k]==null?'0':(a[m.k]/5*100)+'%'; meter.append(fill);
+    const val=document.createElement('span'); val.className='sig-val num'; val.textContent=a[m.k]==null?'–':fmt(a[m.k]);
+    row.append(name,meter,val); box.append(row);
+  }
+  const notes=[];
+  if(!span.length) notes.push('Rate hunger, energy and sleep at the end of each day to see patterns here.');
+  else{
+    // Sleep → hunger: compare hunger after bad nights (sleep 1–2) with good nights (4–5).
+    const bad=all.filter(e=>e.sleep!=null&&e.sleep<=2&&e.hunger!=null), good=all.filter(e=>e.sleep!=null&&e.sleep>=4&&e.hunger!=null);
+    if(bad.length>=3&&good.length>=3){
+      const hb=avg(bad,'hunger'), hg=avg(good,'hunger');
+      if(hb-hg>=0.7) notes.push(`After bad sleep your hunger averages ${fmt(hb)} vs ${fmt(hg)} after good sleep. Protecting sleep makes the cut easier.`);
+    }
+    if(a.hunger!=null&&a.hunger>=4) notes.push('Hunger is running high. More protein and high-volume foods help. If it stays high, a short break at maintenance can reset it.');
+    if(a.energy!=null&&a.energy<=2) notes.push('Energy is low. If it stays there, your deficit may be too aggressive.');
+    if(a.sleep!=null&&a.sleep<=2.5) notes.push('Sleep is poor. Bad sleep raises hunger and makes the scale noisier.');
+    if(!notes.length) notes.push(span.length<3?'Keep rating each evening. Patterns show up after a few days.':'Signals look steady. Keep going.');
+  }
+  const ul=$('signalNotes'); ul.innerHTML='';
+  for(const n of notes.slice(0,2)){const li=document.createElement('li'); li.textContent=n; ul.append(li);}
+}
+
 /* ---------- render ---------- */
 function render(){
   const S=sched(); const a=analyze(); const v=a.v;
@@ -180,6 +276,8 @@ function render(){
   setStreak('sPlan',streak(e=>e.onPlan===true),'d');
   setStreak('sProt',g.protein?streak(e=>e.protein!=null&&e.protein>=g.protein):0,'d');
   renderRecap(a.pts);
+  renderSignals();
+  renderDebrief();
   renderHist(a.days);
   renderBanner();
   // home status card + tab subtitles
@@ -227,7 +325,8 @@ function renderHist(days){
     const mid=document.createElement('span');mid.style.minWidth='0';
     const w=document.createElement('span');w.className='w';w.textContent=e.weight!=null?fmt(e.weight):'—';
     const m=document.createElement('div');m.className='meta';
-    m.textContent=[e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||(e.weight!=null?'Weight only':'Habits only');
+    const rated=hasRatings(e)?'H'+(e.hunger??'–')+' E'+(e.energy??'–')+' S'+(e.sleep??'–'):null;
+    m.textContent=[e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null,rated].filter(Boolean).join(' · ')||(e.weight!=null?'Weight only':'Habits only');
     mid.append(w,m);
     const pl=document.createElement('span');pl.className='pill '+(e.onPlan===true?'yes':e.onPlan===false?'no':'na');pl.textContent=e.onPlan===true?'On plan':e.onPlan===false?'Off plan':'—';
     b.append(d,mid,pl); b.addEventListener('click',()=>editDay(e.date)); h.append(b);
@@ -276,6 +375,7 @@ function loadIntoForm(date){
   const e=entries()[date]||{};
   $('fDate').value=date; $('fWeight').value=e.weight??''; $('fCal').value=e.calories??''; $('fProt').value=e.protein??''; $('fSteps').value=e.steps??'';
   setPlan(e.onPlan??null);
+  ratings={hunger:e.hunger??null,energy:e.energy??null,sleep:e.sleep??null}; paintRates($('formRates'),ratings);
   const exists=!!entries()[date]&&mode!=='example';
   $('delBtn').hidden=!exists;
   $('formTitle').textContent=date===today()?'Log today':'Edit '+short(date);
@@ -291,8 +391,8 @@ $('form').addEventListener('submit',ev=>{
   const msg=$('formMsg'); msg.className='msg';
   const date=$('fDate').value;
   if(!date){msg.className='msg err';msg.textContent='Pick a date first.';return;}
-  const e={date,weight:numOrNull('fWeight'),calories:numOrNull('fCal'),protein:numOrNull('fProt'),steps:numOrNull('fSteps'),onPlan};
-  if(e.weight==null&&e.calories==null&&e.protein==null&&e.steps==null&&e.onPlan==null){msg.className='msg err';msg.textContent='Enter at least one number or answer "Stuck to plan?".';return;}
+  const e={date,weight:numOrNull('fWeight'),calories:numOrNull('fCal'),protein:numOrNull('fProt'),steps:numOrNull('fSteps'),onPlan,...ratings};
+  if(e.weight==null&&e.calories==null&&e.protein==null&&e.steps==null&&e.onPlan==null&&!hasRatings(e)){msg.className='msg err';msg.textContent='Enter at least one number, answer "Stuck to plan?", or rate the day.';return;}
   if(e.weight!=null&&(e.weight<50||e.weight>700)){msg.className='msg err';msg.textContent='Weight should be in pounds, between 50 and 700.';return;}
   if(mode==='example') mode=canStore?'mine':'memory';
   mine[date]=e; render(); loadIntoForm(date);
@@ -331,13 +431,13 @@ $('exportBtn').addEventListener('click',()=>{
   const {days,pts}=series();
   const trend={}; for(const p of pts) trend[p.date]=p.t;
   const cell=v=>v==null?'':v;
-  const lines=['date,weight_lb,trend_lb,calories,protein_g,steps,on_plan'];
+  const lines=['date,weight_lb,trend_lb,calories,protein_g,steps,on_plan,hunger_1to5,energy_1to5,sleep_1to5'];
   for(const e of days){
-    lines.push([e.date,cell(e.weight),trend[e.date]==null?'':trend[e.date].toFixed(2),cell(e.calories),cell(e.protein),cell(e.steps),e.onPlan==null?'':e.onPlan?'yes':'no'].join(','));
+    lines.push([e.date,cell(e.weight),trend[e.date]==null?'':trend[e.date].toFixed(2),cell(e.calories),cell(e.protein),cell(e.steps),e.onPlan==null?'':e.onPlan?'yes':'no',cell(e.hunger),cell(e.energy),cell(e.sleep)].join(','));
   }
   const blob=new Blob([lines.join('\n')+'\n'],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download='cut-coach-'+today()+'.csv';
+  const a=document.createElement('a'); a.href=url; a.download='pinche-guey-'+today()+'.csv';
   document.body.append(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
   msg.textContent='Exported '+plural(days.length,'day')+'.';
@@ -362,7 +462,7 @@ function renderMood(){
   const now=new Date(), slot=slotFor(now.getHours()), day=moods[moodDate(now)]||{}, picked=day[slot]||null;
   const cur=currentMood(now);
   if(cur) document.documentElement.dataset.mood=cur; else delete document.documentElement.dataset.mood;
-  document.querySelector('meta[name="theme-color"]').content=THEME_BG[cur]||'#05070b';
+  document.querySelector('meta[name="theme-color"]').content=THEME_BG[cur]||'#04060a';
   $('moodSlot').textContent=SLOT_NAMES[slot]+' check-in';
   $('moodQ').textContent=picked?'Feeling '+MOOD_NAMES[picked].toLowerCase()+'. Tap to change.':'How are you feeling?';
   $('moodNow').textContent=cur?MOOD_NAMES[cur]:'';
@@ -403,8 +503,8 @@ function tick(){
   $('greetName').textContent=NAME;
   const day=now.toLocaleDateString(undefined,{weekday:'short'}).toUpperCase();
   const date=now.toLocaleDateString(undefined,{month:'short',day:'2-digit'}).toUpperCase();
-  $('clock').textContent=day+' · '+date+' · '+pad(now.getHours())+':'+pad(now.getMinutes());
-  renderMood(); // a new time of day means a new check-in slot
+  $('clock').textContent=day+' '+date+' · '+pad(now.getHours())+':'+pad(now.getMinutes());
+  renderMood(); renderDebrief(); // a new time of day means a new check-in slot
 }
 
 // One line per calendar day: the day number picks the quote, so it stays the same all day
@@ -418,6 +518,56 @@ function showQuote(){
   $('qK').textContent=q.k; $('qT').textContent=q.t; $('qA').textContent=q.a;
 }
 $('qNext').addEventListener('click',()=>{quoteShift++;showQuote();});
+
+/* ---------- intro animation ---------- */
+// Plays on every open: boot lines type in, a scan line sweeps, the greeting decodes from
+// random glyphs, your name assembles letter by letter, then the overlay dissolves.
+// Tap anywhere to skip. It also replays when you come back after 10+ minutes away.
+const GLYPHS='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&*+<>/\\=';
+const reduceMotion=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+let introTimers=[], introRAF=0;
+// Each character shows random glyphs until its turn, then locks to the real letter.
+function decode(el,text,ms){
+  const t0=performance.now();
+  const step=now=>{
+    const k=Math.min(1,(now-t0)/ms), locked=Math.floor(k*text.length);
+    let out='';
+    for(let i=0;i<text.length;i++) out+= i<locked||text[i]===' '?text[i]:GLYPHS[Math.floor(Math.random()*GLYPHS.length)];
+    el.textContent=out;
+    if(k<1) introRAF=requestAnimationFrame(step);
+  };
+  introRAF=requestAnimationFrame(step);
+}
+function endIntro(){
+  const el=$('intro'); if(el.classList.contains('out')||el.hidden) return;
+  introTimers.forEach(clearTimeout); introTimers=[]; cancelAnimationFrame(introRAF);
+  el.classList.add('out');
+  setTimeout(()=>{el.hidden=true;el.classList.remove('out','run');},reduceMotion?200:520);
+}
+function playIntro(){
+  const el=$('intro'), now=new Date();
+  const greet=greetingFor(now.getHours()).toUpperCase(), name=NAME.toUpperCase();
+  introTimers.forEach(clearTimeout); introTimers=[]; cancelAnimationFrame(introRAF);
+  el.hidden=false; el.classList.remove('out','run'); void el.offsetWidth; // restart CSS animations
+  el.classList.add('run');
+  const boot=$('introBoot'), g=$('introGreet'), n=$('introName');
+  boot.innerHTML=''; g.textContent=''; n.innerHTML='';
+  // The name is one span per letter so CSS can stagger them in.
+  [...name].forEach((ch,i)=>{const s=document.createElement('span');s.textContent=ch;s.style.animationDelay=(1.55+i*0.09)+'s';n.append(s);});
+  n.setAttribute('aria-label',name);
+  if(reduceMotion){ g.textContent=greet; introTimers.push(setTimeout(endIntro,1400)); return; }
+  const lines=['PINCHE GÜEY OS · BUILD 2049.10','NEURAL LINK ··········· OK','BIOMETRICS ············ SYNCED','IDENTITY ·············· '+name];
+  lines.forEach((t,i)=>introTimers.push(setTimeout(()=>{const d=document.createElement('div');d.textContent=t;boot.append(d);},120+i*150)));
+  introTimers.push(setTimeout(()=>decode(g,greet,650),900));
+  introTimers.push(setTimeout(endIntro,3300));
+}
+$('intro').addEventListener('click',endIntro);
+let hiddenAt=null;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){hiddenAt=Date.now();return;}
+  if(hiddenAt&&Date.now()-hiddenAt>10*60*1000){tick();playIntro();}
+  hiddenAt=null;
+});
 
 /* ---------- router: bottom tabs ---------- */
 // The URL hash says which tab is showing (#home, #log, #progress, #history, #settings).
@@ -443,10 +593,13 @@ if(canStore){
   moods=load(KEY_MOODS,{});
 }
 mode=Object.keys(mine).length?'mine':'example';
+buildRates($('formRates'),(k,v)=>{ratings={...ratings,[k]:ratings[k]===v?null:v};paintRates($('formRates'),ratings);});
+buildRates($('debriefRates'),(k,v)=>rateDay($('debriefCard').dataset.date,k,v));
 fillGoals(); loadIntoForm(today()); render();
 tick(); setInterval(tick,30000); // keeps the greeting, clock and check-in slot current
 showQuote();
 route();
+playIntro();
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{
