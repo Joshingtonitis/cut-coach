@@ -111,7 +111,9 @@ a{color:inherit}
 #home{gap:24px}
 .topline{display:flex;align-items:center;gap:12px;white-space:nowrap;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:var(--muted)}
 .brandmark{display:inline-flex;align-items:center;gap:8px;color:var(--fg);font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:.16em}
-.logo{width:22px;height:22px;display:block;border-radius:4px}
+.logo{width:24px;height:24px;display:block;flex:none;border-radius:6px;box-shadow:0 0 0 1px rgba(var(--a1),.35),0 0 12px -3px rgba(var(--a1),.7)}
+/* Logo colors follow the theme. */
+.lg-bg{fill:var(--surface-solid)} .lg-from{stop-color:var(--info)} .lg-to{stop-color:rgb(var(--a1))} .lg-dot{fill:rgb(var(--a1))} .lg-hole{fill:var(--bg)}
 .link{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
 .pulse{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px rgba(var(--a1),.9)}
 .clock{font-variant-numeric:tabular-nums}
@@ -235,7 +237,12 @@ form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field.full{grid-column:1/-1;padding-top:6px;border-top:1px dashed var(--line);gap:10px}
 label,.lbltxt{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.14em}
-input{font:inherit;font-family:var(--mono);font-size:16px;color:var(--fg);background:var(--sunk);border:1px solid var(--line-strong);border-radius:2px;padding:11px 12px;width:100%;min-width:0;color-scheme:dark}
+input{font:inherit;font-family:var(--mono);font-size:16px;color:var(--fg);background:var(--sunk);border:1px solid var(--line-strong);border-radius:2px;padding:0 12px;height:48px;width:100%;min-width:0;max-width:100%;color-scheme:dark;-webkit-appearance:none;appearance:none}
+/* iOS gives date fields a built-in minimum width that ignores the grid and overlaps the next
+   column. appearance:none above removes it; these keep the date text aligned like the rest. */
+input[type="date"]{display:block}
+input::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.5em}
+input::-webkit-calendar-picker-indicator{opacity:.6}
 input::placeholder{color:var(--faint)}
 input:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px rgba(var(--a1),.14),0 0 18px -6px rgba(var(--a1),.8)}
 button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -277,27 +284,16 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .goals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .empty{color:var(--muted);font-size:14px;padding-block:8px}
 
-/* ---------- Lights on: plays when your mood (and so the theme) changes ---------- */
-/* The screen drops dark for an instant, flickers, then light spreads out in a circle from
-   the button you tapped, with a glowing edge, revealing the new colors. --lr is the radius
-   of the lit circle and --lmax (set by app.js) the distance to the farthest screen corner; registering it with @property is what lets it animate. */
-@property --lr{syntax:'<length>';inherits:false;initial-value:0px}
+/* ---------- Theme change sweep ---------- */
+/* With View Transitions, app.js grows a circle on the new page snapshot; turn off the
+   browser's default crossfade so it's a clean reveal. */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+/* Fallback for older browsers: a soft glowing ring travels out from the tapped button. */
 .lightwave{position:fixed;inset:0;z-index:90;pointer-events:none;overflow:hidden}
-.lw-dark{position:absolute;inset:0;background:rgba(0,0,0,.9);
-  -webkit-mask:radial-gradient(circle at var(--x) var(--y),transparent var(--lr),#000 calc(var(--lr) + 70px));
-          mask:radial-gradient(circle at var(--x) var(--y),transparent var(--lr),#000 calc(var(--lr) + 70px))}
 .lw-ring{position:absolute;left:var(--x);top:var(--y);width:calc(var(--lmax) * 2);height:calc(var(--lmax) * 2);margin:calc(var(--lmax) * -1) 0 0 calc(var(--lmax) * -1);border-radius:50%;
-  box-shadow:0 0 0 2px rgba(var(--a1),.95),0 0 50px 12px rgba(var(--a1),.55),inset 0 0 90px 24px rgba(var(--a1),.30);transform:scale(0)}
-.lw-flash{position:absolute;inset:0;background:radial-gradient(circle at var(--x) var(--y),rgba(var(--a1),.35),transparent 60%);opacity:0}
-.lightwave.go .lw-dark{animation:lwFlicker .16s steps(2,jump-none) 2,lwReveal 1s cubic-bezier(.55,.1,.3,1) .22s forwards}
-.lightwave.go .lw-ring{animation:lwRing 1s cubic-bezier(.55,.1,.3,1) .22s forwards}
-.lightwave.go .lw-flash{animation:lwFlash .8s ease-out .2s}
-.lightwave.go{animation:lwFade .3s ease-out 1.1s forwards}
-@keyframes lwFlicker{0%{opacity:1}50%{opacity:.6}100%{opacity:1}}
-@keyframes lwReveal{to{--lr:var(--lmax)}}
-@keyframes lwRing{0%{transform:scale(0);opacity:1}80%{opacity:1}100%{transform:scale(1);opacity:0}}
-@keyframes lwFlash{0%{opacity:0}25%{opacity:1}100%{opacity:0}}
-@keyframes lwFade{to{opacity:0}}
+  box-shadow:0 0 0 1.5px rgba(var(--a1),.8),0 0 60px 14px rgba(var(--a1),.4),inset 0 0 80px 20px rgba(var(--a1),.18);transform:scale(0)}
+.lightwave.go .lw-ring{animation:lwRing 1s cubic-bezier(.5,0,.25,1) forwards}
+@keyframes lwRing{0%{transform:scale(0);opacity:1}75%{opacity:.9}100%{transform:scale(1);opacity:0}}
 
 /* ---------- Intro ---------- */
 /* Covers the app from the first frame. Safety net: if the script never runs, the overlay

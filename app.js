@@ -486,23 +486,33 @@ for(const b of document.querySelectorAll('.mood-btn')){
     const before=currentMood(now);
     moods={...moods,[d]:day};
     if(canStore) save(KEY_MOODS,moods);
-    if(currentMood(now)!==before) lightsOn(b); // only when the theme actually changes
-    renderMood();
+    if(currentMood(now)!==before) themeSwitch(b,renderMood); // animate only when the theme changes
+    else renderMood();
   });
 }
-// The lights-on sweep: starts dark, then light spreads from the tapped button (styles.css).
-let lightsTimer=0;
-function lightsOn(fromEl){
-  if(reduceMotion) return;
-  const lw=$('lightwave'), r=fromEl.getBoundingClientRect();
-  lw.style.setProperty('--x',(r.left+r.width/2)+'px');
-  lw.style.setProperty('--y',(r.top+r.height/2)+'px');
-  // Radius that just clears the farthest corner, so the light's edge is visible the whole way.
-  const cx=r.left+r.width/2, cy=r.top+r.height/2, W=innerWidth, H=innerHeight;
-  lw.style.setProperty('--lmax',Math.ceil(Math.hypot(Math.max(cx,W-cx),Math.max(cy,H-cy))+90)+'px');
-  lw.hidden=false; lw.classList.remove('go'); void lw.offsetWidth; lw.classList.add('go'); // restart animations
-  clearTimeout(lightsTimer);
-  lightsTimer=setTimeout(()=>{lw.hidden=true;lw.classList.remove('go');},1500);
+// Theme change: the new colors spread out in a circle from the button you tapped.
+// Where the browser supports View Transitions (iOS 18+, recent Chrome), it keeps a picture of
+// the old theme and we grow a circular window onto the new one, so it's one smooth sweep.
+// Older browsers switch the colors directly while a soft glowing ring travels outward.
+let ringTimer=0;
+function themeSwitch(fromEl,apply){
+  if(reduceMotion){apply();return;}
+  const r=fromEl.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+  // Radius that just clears the farthest screen corner.
+  const lmax=Math.ceil(Math.hypot(Math.max(cx,innerWidth-cx),Math.max(cy,innerHeight-cy)));
+  if(document.startViewTransition){
+    const vt=document.startViewTransition(apply);
+    vt.ready.then(()=>document.documentElement.animate(
+      {clipPath:[`circle(0px at ${cx}px ${cy}px)`,`circle(${lmax}px at ${cx}px ${cy}px)`]},
+      {duration:1000,easing:'cubic-bezier(.5,0,.25,1)',pseudoElement:'::view-transition-new(root)'}
+    )).catch(()=>{});
+    return;
+  }
+  apply();
+  const lw=$('lightwave');
+  lw.style.setProperty('--x',cx+'px'); lw.style.setProperty('--y',cy+'px'); lw.style.setProperty('--lmax',(lmax+60)+'px');
+  lw.hidden=false; lw.classList.remove('go'); void lw.offsetWidth; lw.classList.add('go'); // restart the ring
+  clearTimeout(ringTimer); ringTimer=setTimeout(()=>{lw.hidden=true;lw.classList.remove('go');},1200);
 }
 
 /* ---------- home: greeting, clock, daily line ---------- */

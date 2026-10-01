@@ -118,10 +118,14 @@ accent color variables (`--a1`, `--a2`, `--a3`). It also re-tints the status col
 (`--good`, `--warn`, `--bad`) used by verdict tags, the Yes/No buttons and History
 pills, so nothing stays teal or green in another theme.
 
-**Lights on.** When a check-in changes the theme, the screen drops dark for an
-instant and flickers. Then light spreads out in a circle from the button you tapped,
-with a glowing edge, revealing the new colors. It takes about a second. It's
-skipped when Reduce Motion is on.
+**Theme sweep.** When a check-in changes the theme, the new colors spread out in a
+smooth circle from the button you tapped, over about a second, with no flash. On
+iOS 18+ and recent Chrome this uses the browser's View Transitions: the old theme
+stays on screen while a growing circle reveals the new one. Older browsers switch
+the colors directly while a soft glowing ring travels outward. It's skipped when
+Reduce Motion is on. The logo in the top bar is drawn inline in `index.html`, so it
+takes the theme colors too. The home-screen app icon can't change, because iOS
+keeps the image saved when you added it.
 
 ### Weigh-in schedule
 
