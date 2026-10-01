@@ -28,9 +28,12 @@
 
   <div class="banner" id="banner" hidden></div>
 
-  <section aria-label="Stall check">
-    <div class="verdict v-info" id="verdict">
-      <span class="tag" id="vTag">Loading</span>
+  <!-- Each section is a <details> element: tap its <summary> header to open or close it.
+       The small "peek" text on the right of each header is filled in by app.js so you
+       can see the key number without opening the section. -->
+  <details class="verdict v-info sect" id="verdict" data-sect="check" open>
+    <summary><span class="sum-title">Stall check</span><span class="tag" id="vTag">Loading</span></summary>
+    <div class="body">
       <h3 id="vHead">Checking your last two weeks…</h3>
       <p class="why" id="vWhy"></p>
       <p class="do" id="vDo"></p>
@@ -41,18 +44,19 @@
       </div>
       <p class="pattern" id="pattern" hidden></p>
     </div>
-  </section>
+  </details>
 
-  <section class="panel chart" aria-label="Weight trend">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
-      <h2>Trend</h2>
+  <details class="panel sect chart" data-sect="trend">
+    <summary><span class="sum-title">Trend</span><span class="peek" id="pkTrend"></span></summary>
+    <div class="body">
       <div class="legend"><span><i class="sw"></i>Trend weight</span><span><i class="dot"></i>Daily weigh-in</span></div>
+      <div id="chart"></div>
     </div>
-    <div id="chart"></div>
-  </section>
+  </details>
 
-  <section class="panel" aria-label="Log a day">
-    <h2 id="formTitle">Log today</h2>
+  <details class="panel sect" id="logBox" data-sect="log" open>
+    <summary><span class="sum-title" id="formTitle">Log today</span><span class="peek" id="pkLog"></span></summary>
+    <div class="body">
     <form id="form" novalidate>
       <div class="field"><label for="fDate">Date</label><input id="fDate" type="date" required></div>
       <div class="field"><label for="fWeight">Weight (lb)</label><input id="fWeight" type="number" inputmode="decimal" step="0.1" min="50" max="700" placeholder="e.g. 182.4"></div>
@@ -71,41 +75,48 @@
         <span class="msg" id="formMsg" role="status"></span>
       </div>
     </form>
-  </section>
-
-  <section aria-label="Habits">
-    <h2>Streaks</h2>
-    <div class="streaks">
-      <div class="streak"><div class="num" id="sLog">0<small>d</small></div><div class="lbl">Logging</div></div>
-      <div class="streak"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
-      <div class="streak"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
     </div>
-  </section>
+  </details>
 
-  <section class="panel" aria-label="Weekly recap">
-    <h2>Last 7 days</h2>
-    <div class="recap" id="recap"></div>
-  </section>
-
-  <section class="panel" aria-label="History">
-    <div class="head-row">
-      <h2>History</h2>
-      <button class="btn small ghost" type="button" id="exportBtn">Export CSV</button>
+  <details class="panel sect" data-sect="streaks">
+    <summary><span class="sum-title">Streaks</span><span class="peek" id="pkStreaks"></span></summary>
+    <div class="body">
+      <div class="streaks">
+        <div class="streak"><div class="num" id="sLog">0<small>d</small></div><div class="lbl">Logging</div></div>
+        <div class="streak"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
+        <div class="streak"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
+      </div>
     </div>
-    <p class="msg" id="histMsg" role="status">Tap a day to edit it.</p>
-    <div class="hist" id="hist"></div>
-  </section>
+  </details>
 
-  <section class="panel">
-    <details id="goalsBox">
-      <summary>Goals</summary>
+  <details class="panel sect" data-sect="week">
+    <summary><span class="sum-title">Last 7 days</span><span class="peek" id="pkWeek"></span></summary>
+    <div class="body">
+      <div class="recap" id="recap"></div>
+    </div>
+  </details>
+
+  <details class="panel sect" data-sect="history">
+    <summary><span class="sum-title">History</span><span class="peek" id="pkHist"></span></summary>
+    <div class="body">
+      <div class="head-row">
+        <p class="msg" id="histMsg" role="status">Tap a day to edit it.</p>
+        <button class="btn small ghost" type="button" id="exportBtn">Export CSV</button>
+      </div>
+      <div class="hist" id="hist"></div>
+    </div>
+  </details>
+
+  <details class="panel sect" data-sect="goals">
+    <summary><span class="sum-title">Goals</span><span class="peek" id="pkGoals"></span></summary>
+    <div class="body">
       <div class="goals">
         <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
         <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
         <div class="actions"><button class="btn small" type="button" id="goalSave">Save goals</button><span class="msg" id="goalMsg" role="status"></span></div>
       </div>
-    </details>
-  </section>
+    </div>
+  </details>
 </div>
 </body>
 </html>

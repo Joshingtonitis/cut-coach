@@ -114,7 +114,7 @@ function streak(test){
 /* ---------- render ---------- */
 function render(){
   const a=analyze(); const v=a.v;
-  const box=$('verdict'); box.className='verdict '+v.cls;
+  const box=$('verdict'); box.className='verdict sect '+v.cls;
   $('vTag').textContent=v.tag; $('vHead').textContent=v.head; $('vWhy').textContent=v.why; $('vDo').textContent=v.do;
   $('fRate').textContent=a.rate==null?'–':(a.rate>0?'+':'')+fmt(a.rate,2);
   $('fPlan').textContent=a.planRate==null?'–':Math.round(a.planRate*100)+'%';
@@ -123,12 +123,24 @@ function render(){
   if(a.pattern){p.hidden=false;p.innerHTML='';const b=document.createElement('b');b.textContent='Weekend pattern: ';p.append(b,`you're on plan ${Math.round(a.pattern.wk*100)}% of weekend days vs ${Math.round(a.pattern.wd*100)}% on weekdays.`);} else p.hidden=true;
   renderChart(a.pts);
   const g=curGoals();
-  setStreak('sLog',streak(()=>true));
+  const logStreak=streak(()=>true);
+  setStreak('sLog',logStreak);
   setStreak('sPlan',streak(e=>e.onPlan===true));
   setStreak('sProt',g.protein?streak(e=>e.protein!=null&&e.protein>=g.protein):0);
-  renderRecap(a.pts);
+  const weekChange=renderRecap(a.pts);
   renderHist(a.days);
   renderBanner();
+  renderPeeks(a,logStreak,weekChange,g);
+}
+// The short value shown on the right of each section header, visible even when it's closed.
+function renderPeeks(a,logStreak,weekChange,g){
+  const lp=a.pts[a.pts.length-1];
+  $('pkTrend').textContent=lp?fmt(lp.t)+' lb':'';
+  $('pkLog').textContent=entries()[today()]?'Done today ✓':'Not logged today';
+  $('pkStreaks').textContent=logStreak+'d logging';
+  $('pkWeek').textContent=weekChange==null?'':(weekChange>0?'+':'')+fmt(weekChange)+' lb';
+  $('pkHist').textContent=a.days.length+' day'+(a.days.length===1?'':'s');
+  $('pkGoals').textContent=[g.protein?g.protein+' g protein':null,g.steps?g.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||'Not set';
 }
 function setStreak(id,n){const el=$(id);el.textContent=n;const s=document.createElement('small');s.textContent='d';el.append(s);}
 
@@ -148,6 +160,7 @@ function renderRecap(pts){
   ];
   const r=$('recap'); r.innerHTML='';
   for(const[k,val] of rows){const d=document.createElement('div');const a=document.createElement('span');a.textContent=k;const b=document.createElement('span');b.className='num';b.textContent=val;d.append(a,b);r.append(d);}
+  return ch;
 }
 
 function renderHist(days){
@@ -163,7 +176,7 @@ function renderHist(days){
     m.textContent=[e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null].filter(Boolean).join(' · ')||'Weight only';
     mid.append(w,m);
     const pl=document.createElement('span');pl.className='pill '+(e.onPlan===true?'yes':e.onPlan===false?'no':'na');pl.textContent=e.onPlan===true?'On plan':e.onPlan===false?'Off plan':'—';
-    b.append(d,mid,pl); b.addEventListener('click',()=>loadIntoForm(e.date)); h.append(b);
+    b.append(d,mid,pl); b.addEventListener('click',()=>editDay(e.date)); h.append(b);
   }
 }
 
@@ -213,7 +226,11 @@ function loadIntoForm(date){
   $('formTitle').textContent=date===today()?'Log today':'Edit '+short(date);
   $('saveBtn').textContent=exists?'Update day':'Save day';
   $('formMsg').textContent=''; $('formMsg').className='msg';
-  if(date!==today()) $('form').scrollIntoView({behavior:'smooth',block:'center'});
+}
+// Tapping a day in History: open the Log section, load that day, and scroll to it.
+function editDay(date){
+  $('logBox').open=true; loadIntoForm(date);
+  $('logBox').scrollIntoView({behavior:'smooth',block:'start'});
 }
 $('fDate').addEventListener('change',()=>{if($('fDate').value) loadIntoForm($('fDate').value)});
 const numOrNull=id=>{const v=$(id).value.trim();return v===''?null:Number(v)};
@@ -275,6 +292,16 @@ if(canStore){
 }
 mode=Object.keys(mine).length?'mine':'example';
 fillGoals(); loadIntoForm(today()); render();
+
+// Collapsible sections: remember which ones you left open for next time.
+// Until you change anything, the HTML defaults apply (Stall check and Log open).
+const KEY_OPEN='cutcoach.open';
+const sects=[...document.querySelectorAll('details.sect')];
+const savedOpen=load(KEY_OPEN,null);
+for(const d of sects){
+  if(Array.isArray(savedOpen)) d.open=savedOpen.includes(d.dataset.sect);
+  d.addEventListener('toggle',()=>{if(canStore) save(KEY_OPEN,sects.filter(x=>x.open).map(x=>x.dataset.sect));});
+}
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{

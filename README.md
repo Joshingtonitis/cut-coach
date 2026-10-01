@@ -32,7 +32,13 @@ Each day can have any of these fields. All are optional, but you need at least o
 - **Calories**, **protein** (g), **steps**
 - **Stuck to plan?** Yes or no. This is your own honest call for the day.
 
-Click any day in History to edit or delete it. Under **Goals** you can set a daily
+The page is split into collapsible sections: Stall check, Trend, Log today, Streaks,
+Last 7 days, History and Goals. Tap a section's header to open or close it. Each
+header shows a key number on the right, such as your trend weight or whether you've
+logged today, so you can check things without opening anything. Stall check and Log
+today start open. After that, the app remembers which sections you left open.
+
+Tap any day in History to edit or delete it. This opens the Log section with that day loaded. Under **Goals** you can set a daily
 protein target, which drives the protein streak, and a daily step goal.
 
 Until you save your first day, the app shows made-up **example data** so you can
@@ -40,10 +46,11 @@ see how it works. The example data is never saved or exported.
 
 ## Where your data lives
 
-Everything is stored in your browser's `localStorage`, under two keys:
+Everything is stored in your browser's `localStorage`, under these keys:
 
 - `cutcoach.entries`: every logged day, as an object keyed by date (`YYYY-MM-DD`)
 - `cutcoach.goals`: your protein and step goals
+- `cutcoach.open`: which sections you left open
 
 Nothing is sent anywhere. That also means the data belongs to **this browser on
 this device**. Clearing site data, or opening the app in a different browser,

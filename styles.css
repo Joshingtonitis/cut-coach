@@ -39,8 +39,9 @@ section{display:flex;flex-direction:column;gap:12px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
 
 /* Verdict */
-.verdict{border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);background:var(--surface)}
-.verdict .tag{align-self:flex-start;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:999px}
+.verdict{border-radius:var(--r);padding:16px 18px;border:1px solid var(--line);background:var(--surface)}
+.verdict .body{gap:10px}
+.verdict .tag{text-align:center;font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:3px 10px;border-radius:999px}
 .verdict h3{font-family:var(--display);font-weight:600;font-size:26px;line-height:1.1;margin:0;text-wrap:balance}
 .verdict .why{color:var(--muted)}
 .verdict .do{font-weight:600}
@@ -91,7 +92,7 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline
 
 /* Habits + recap */
 .streaks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.streak{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}
+.streak{background:var(--sunk);border-radius:12px;padding:12px;min-width:0}
 .streak .num{font-size:32px;line-height:1}
 .streak .num small{font-size:15px;color:var(--muted);margin-left:2px}
 .streak .lbl{font-size:12px;color:var(--muted)}
@@ -110,11 +111,19 @@ input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline
 .pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
 .pill.yes{background:var(--good-soft);color:var(--good)} .pill.no{background:var(--bad-soft);color:var(--bad)} .pill.na{background:var(--sunk);color:var(--faint)}
 .goals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-details summary{cursor:pointer;font-family:var(--display);font-size:20px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
-details[open] summary{margin-bottom:12px}
+
+/* Collapsible sections. Each one is <details class="sect"> with a <summary> header row:
+   title on the left, a "peek" value and a chevron on the right. */
+.sect summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;min-height:28px;-webkit-tap-highlight-color:transparent}
+.sect summary::-webkit-details-marker{display:none}
+.sect summary::after{content:"";flex:none;width:9px;height:9px;margin-left:4px;border-right:2px solid var(--faint);border-bottom:2px solid var(--faint);transform:translateY(-3px) rotate(45deg)}
+.sect[open] summary::after{transform:translateY(2px) rotate(225deg)}
+.sum-title{min-width:0;font-family:var(--display);font-size:20px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:auto}
+.peek{min-width:0;font-size:13px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums;text-align:right}
+.sect .body{display:flex;flex-direction:column;gap:12px;margin-top:14px}
 .empty{color:var(--muted);font-size:14px;padding-block:8px}
 @media (max-width:420px){.facts{grid-template-columns:repeat(3,minmax(0,1fr))}.fact .num{font-size:19px}.recap{grid-template-columns:1fr}}
-@media (prefers-reduced-motion:no-preference){.verdict{transition:box-shadow .3s}}
+@media (prefers-reduced-motion:no-preference){.verdict{transition:box-shadow .3s}.sect summary::after{transition:transform .2s}}
 
 /* Section header with a button on the right (History + Export CSV) */
 .head-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
