@@ -31,6 +31,8 @@ p{margin:0}
 .num{font-variant-numeric:tabular-nums}
 header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 header .sub{color:var(--muted);font-size:13px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;flex:none;display:block}
 .banner{font-size:13px;padding:10px 12px;border-radius:10px;background:var(--sunk);color:var(--muted);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .banner b{color:var(--fg)}
 section{display:flex;flex-direction:column;gap:12px}
