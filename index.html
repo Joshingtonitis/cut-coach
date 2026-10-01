@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cut Coach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Cut Coach</h1>
+      <p class="sub">Trend weight, habits, and why the scale isn't moving.</p>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <section aria-label="Stall check">
+    <div class="verdict v-info" id="verdict">
+      <span class="tag" id="vTag">Loading</span>
+      <h3 id="vHead">Checking your last two weeks…</h3>
+      <p class="why" id="vWhy"></p>
+      <p class="do" id="vDo"></p>
+      <div class="facts">
+        <div class="fact"><div class="num" id="fRate">–</div><div class="lbl">Trend lb/wk</div></div>
+        <div class="fact"><div class="num" id="fPlan">–</div><div class="lbl">On plan, 14d</div></div>
+        <div class="fact"><div class="num" id="fLog">–</div><div class="lbl">Days logged</div></div>
+      </div>
+      <p class="pattern" id="pattern" hidden></p>
+    </div>
+  </section>
+
+  <section class="panel chart" aria-label="Weight trend">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+      <h2>Trend</h2>
+      <div class="legend"><span><i class="sw"></i>Trend weight</span><span><i class="dot"></i>Daily weigh-in</span></div>
+    </div>
+    <div id="chart"></div>
+  </section>
+
+  <section class="panel" aria-label="Log a day">
+    <h2 id="formTitle">Log today</h2>
+    <form id="form" novalidate>
+      <div class="field"><label for="fDate">Date</label><input id="fDate" type="date" required></div>
+      <div class="field"><label for="fWeight">Weight (lb)</label><input id="fWeight" type="number" inputmode="decimal" step="0.1" min="50" max="700" placeholder="e.g. 182.4"></div>
+      <div class="field"><label for="fCal">Calories</label><input id="fCal" type="number" inputmode="numeric" step="10" min="0" placeholder="optional"></div>
+      <div class="field"><label for="fProt">Protein (g)</label><input id="fProt" type="number" inputmode="numeric" step="1" min="0" placeholder="optional"></div>
+      <div class="field"><label for="fSteps">Steps</label><input id="fSteps" type="number" inputmode="numeric" step="100" min="0" placeholder="optional"></div>
+      <div class="field"><span class="lbltxt" id="planLbl">Stuck to plan?</span>
+        <div class="seg" role="group" aria-labelledby="planLbl">
+          <button type="button" class="yes" id="planYes" aria-pressed="false">Yes</button>
+          <button type="button" class="no" id="planNo" aria-pressed="false">No</button>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" type="submit" id="saveBtn">Save day</button>
+        <button class="btn ghost" type="button" id="delBtn" hidden>Delete this day</button>
+        <span class="msg" id="formMsg" role="status"></span>
+      </div>
+    </form>
+  </section>
+
+  <section aria-label="Habits">
+    <h2>Streaks</h2>
+    <div class="streaks">
+      <div class="streak"><div class="num" id="sLog">0<small>d</small></div><div class="lbl">Logging</div></div>
+      <div class="streak"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
+      <div class="streak"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Weekly recap">
+    <h2>Last 7 days</h2>
+    <div class="recap" id="recap"></div>
+  </section>
+
+  <section class="panel" aria-label="History">
+    <div class="head-row">
+      <h2>History</h2>
+      <button class="btn small ghost" type="button" id="exportBtn">Export CSV</button>
+    </div>
+    <p class="msg" id="histMsg" role="status">Tap a day to edit it.</p>
+    <div class="hist" id="hist"></div>
+  </section>
+
+  <section class="panel">
+    <details id="goalsBox">
+      <summary>Goals</summary>
+      <div class="goals">
+        <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
+        <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
+        <div class="actions"><button class="btn small" type="button" id="goalSave">Save goals</button><span class="msg" id="goalMsg" role="status"></span></div>
+      </div>
+    </details>
+  </section>
+</div>
+</body>
+</html>
