@@ -6,6 +6,6 @@
 // rows, enforced by the row-level security rules in setup.sql. Never put the
 // service_role / secret key here.
 window.PG_CONFIG = {
-  supabaseUrl: '',      // e.g. 'https://abcd1234.supabase.co'
-  supabaseAnonKey: '',  // the long "anon" / "publishable" key
+  supabaseUrl: 'https://wofnialpopvfievwrbuf.supabase.co',
+  supabaseAnonKey: 'sb_publishable_5TaXHOfRYbxbn-7WCbsnMg_KoAGUXQI',
 };
