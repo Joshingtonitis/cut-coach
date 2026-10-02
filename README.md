@@ -22,6 +22,9 @@ npx serve .        # or: python3 -m http.server
 | `index.html` | The five tabs (Home, Log, Progress, History, Settings) and the bottom tab bar |
 | `styles.css` | All styling: the sci-fi HUD theme built on CSS variables, the three mood themes, and the intro animation |
 | `app.js`     | Data storage, weigh-in schedules, the stall-check analysis, end-of-day debrief and body signals, rendering, CSV export, the greeting, intro, mood check-ins and tab navigation |
+| `sync.js`    | Optional cloud sync through Supabase (off until `config.js` is filled in) |
+| `config.js`  | Your Supabase project URL and public anon key. Empty means no sync |
+| `supabase/setup.sql` | One-time database setup for sync: table, privacy rules, photo bucket |
 | `quotes.js`  | The list of daily lines shown on the home screen. Add your own here |
 | `icons/`     | App icon: `icon.svg` (source), `favicon.svg`, and PNGs for the home screen |
 | `manifest.json` | Name and icons used when the app is added to a home screen     |
@@ -202,6 +205,64 @@ date,weight_lb,trend_lb,calories,protein_g,steps,on_plan,hunger_1to5,energy_1to5
 
 Empty cells mean you didn't log that field. `trend_lb` is the smoothed trend
 weight described below, so you can chart it in a spreadsheet.
+
+## Sync between phone and laptop
+
+Without sync, each browser keeps its own separate copy of your data. With sync,
+you sign in once on each device and everything stays matched: logs, debriefs,
+mood check-ins, goals, schedule and progress photos. It runs on
+[Supabase](https://supabase.com)'s free tier.
+
+### One-time setup
+
+1. **Create the project.** At supabase.com, sign up (Continue with GitHub works)
+   and click **New project**. Name it `pinche-guey` and pick the region nearest
+   you. Set a database password and keep it to yourself; the app never needs it.
+2. **Create the tables.** Open **SQL Editor → New query**, paste in all of
+   `supabase/setup.sql`, and press **Run**.
+3. **Allow sign-in from the app.** Open **Authentication → URL Configuration** and
+   set **Site URL** to `https://joshingtonitis.github.io/cut-coach/`.
+   Optional, since it's a personal app: under **Authentication → Sign In / Providers
+   → Email**, turn off **Confirm email** so new accounts work right away.
+4. **Connect the app.** Open **Project Settings → API**, copy the **Project URL**
+   and the **anon / publishable** key, and paste both into `config.js`. Commit and
+   deploy. Never use the `service_role` / secret key: it bypasses the privacy rules.
+5. **Sign in on each device.** In the app, open **Settings → Sync**. On your phone,
+   choose **Create account**. On your laptop, **Sign in** with the same email and
+   password. Data already on a device uploads the first time it signs in.
+
+### How it works
+
+Every piece of data is a record with a key (`e:2026-10-01` for a day's log,
+`m:…` for moods, `p:goals`, `p:settings`, `f:…` for a photo) and the time it
+last changed. Each sync pulls all your records, applies any that are newer
+than the device's own copy, and uploads anything the server is missing or has
+an older copy of. When two devices disagree, the newer change wins. Deletions
+spread too. Photos are uploaded to a private storage bucket at
+`<your user id>/<date>.jpg`.
+
+Sync runs when the app opens, a second or two after any change, when you come
+back to the app, every minute while it's open, and whenever you tap **Sync now**.
+The dot next to the clock shows the state: steady means synced, a fast pulse
+means syncing, and orange means there's a problem (the details are in
+Settings → Sync). Signing out keeps your data on the device and just stops
+syncing it.
+
+The anon key in `config.js` is meant to be public. The row-level security rules
+in `setup.sql` only let a signed-in account read and write its own rows and
+photos.
+
+## Working on the code from more than one device
+
+The code lives on GitHub (`joshingtonitis/cut-coach`), so any device can work on
+it:
+
+- **With Claude:** open [claude.ai/code](https://claude.ai/code) in a laptop
+  browser, or use the Claude desktop app, and pick this repository. Each session
+  starts from the latest `main`, so merge a change before switching devices.
+- **Locally:** run `git clone https://github.com/Joshingtonitis/cut-coach.git`,
+  then `npx serve .` (or `python3 -m http.server`), and open the address it
+  prints. Run `git pull` before you start, to pick up changes made elsewhere.
 
 ## How the stall check works
 

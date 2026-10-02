@@ -14,7 +14,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="styles.css">
+<script src="config.js" defer></script>
 <script src="quotes.js" defer></script>
+<script src="sync.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -232,6 +234,21 @@
           <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
           <div class="actions"><button class="btn small" type="button" id="goalSave">Save goals</button><span class="msg" id="goalMsg" role="status"></span></div>
         </div>
+      </div>
+    </div>
+    <div class="block">
+      <h3 class="kicker">Sync</h3>
+      <div class="panel hud">
+        <p class="msg" id="syncStatus" role="status"></p>
+        <div id="syncSignedOut" hidden>
+          <div class="goals">
+            <div class="field"><label for="sEmail">Email</label><input id="sEmail" type="email" autocomplete="username" inputmode="email" placeholder="you@email.com"></div>
+            <div class="field"><label for="sPass">Password</label><input id="sPass" type="password" autocomplete="current-password" placeholder="6+ characters"></div>
+            <div class="actions"><button class="btn small" type="button" id="sBtnIn">Sign in</button><button class="btn ghost small" type="button" id="sBtnUp">Create account</button></div>
+          </div>
+        </div>
+        <div class="actions" id="syncSignedIn" hidden><button class="btn small" type="button" id="sBtnNow">Sync now</button><button class="btn ghost small" type="button" id="sBtnOut">Sign out</button></div>
+        <p class="msg" id="syncMsg" role="status"></p>
       </div>
     </div>
   </section>

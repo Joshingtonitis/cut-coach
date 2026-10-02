@@ -204,6 +204,7 @@ function rateDay(date,k,v){
   e[k]=e[k]===v?null:v;
   const empty=e.weight==null&&e.calories==null&&e.protein==null&&e.steps==null&&e.onPlan==null&&!hasRatings(e);
   if(empty) delete mine[date]; else mine[date]=e;
+  if(empty) synced.remove('e:'+date); else synced.touch('e:'+date);
   if(canStore) save(KEY_ENTRIES,mine);
   if($('fDate').value===date){ ratings={...ratings,[k]:e[k]}; paintRates($('formRates'),ratings); }
   render();
@@ -397,28 +398,28 @@ $('form').addEventListener('submit',ev=>{
   if(e.weight==null&&e.calories==null&&e.protein==null&&e.steps==null&&e.onPlan==null&&!hasRatings(e)){msg.className='msg err';msg.textContent='Enter at least one number, answer "Stuck to plan?", or rate the day.';return;}
   if(e.weight!=null&&(e.weight<50||e.weight>700)){msg.className='msg err';msg.textContent='Weight should be in pounds, between 50 and 700.';return;}
   if(mode==='example') mode=canStore?'mine':'memory';
-  mine[date]=e; render(); loadIntoForm(date);
+  mine[date]=e; render(); loadIntoForm(date); synced.touch('e:'+date);
   if(!canStore) msg.textContent='Saved for this session.';
   else if(save(KEY_ENTRIES,mine)) msg.textContent='Saved.';
   else {msg.className='msg err';msg.textContent='Couldn\'t save. Your browser storage may be full.';}
 });
 $('delBtn').addEventListener('click',()=>{
   const date=$('fDate').value; if(!mine[date]) return;
-  delete mine[date]; render(); loadIntoForm(date); $('formMsg').textContent='Deleted.';
+  delete mine[date]; render(); loadIntoForm(date); $('formMsg').textContent='Deleted.'; synced.remove('e:'+date);
   if(canStore&&!save(KEY_ENTRIES,mine)){$('formMsg').className='msg err';$('formMsg').textContent='Couldn\'t delete. Try again.';}
 });
 
 /* ---------- settings: goals + weigh-in schedule ---------- */
 function fillGoals(){$('gProt').value=goals.protein??'';$('gSteps').value=goals.steps??'';}
 $('goalSave').addEventListener('click',()=>{
-  goals={protein:numOrNull('gProt'),steps:numOrNull('gSteps')};
+  goals={protein:numOrNull('gProt'),steps:numOrNull('gSteps')}; synced.touch('p:goals');
   render(); $('goalMsg').textContent='Saved.';
   if(canStore&&!save(KEY_GOALS,goals)) $('goalMsg').textContent='Couldn\'t save goals. Try again.';
 });
 // The schedule buttons appear in both Progress and Settings; they share one setting.
 for(const b of document.querySelectorAll('[data-sched]')){
   b.addEventListener('click',()=>{
-    settings={...settings,schedule:b.dataset.sched};
+    settings={...settings,schedule:b.dataset.sched}; synced.touch('p:settings');
     if(canStore) save(KEY_SETTINGS,settings);
     render();
   });
@@ -512,7 +513,7 @@ $('photoInput').addEventListener('change',async ev=>{
   $('photoMsg').textContent='Saving photo…';
   try{
     const {blob,w,h}=await compressImage(file);
-    await idb('readwrite',st=>st.put({date,blob,w,h,added:Date.now()}));
+    await idb('readwrite',st=>st.put({date,blob,w,h,added:Date.now()})); synced.touch('f:'+date);
     if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{}); // ask the browser not to clear it
     await loadPhotos();
   }catch(e){ $('photoMsg').textContent='Couldn\'t save that photo. Try a different one.'; }
@@ -520,7 +521,7 @@ $('photoInput').addEventListener('change',async ev=>{
 $('photoDel').addEventListener('click',async()=>{
   const date=$('fDate').value;
   if(!confirm('Remove the progress photo for '+short(date)+'?')) return;
-  try{ await idb('readwrite',st=>st.delete(date)); await loadPhotos(); }
+  try{ await idb('readwrite',st=>st.delete(date)); synced.remove('f:'+date); await loadPhotos(); }
   catch(e){ $('photoMsg').textContent='Couldn\'t remove the photo. Try again.'; }
 });
 $('photoThumb').addEventListener('click',()=>openViewer($('fDate').value));
@@ -604,6 +605,7 @@ for(const b of document.querySelectorAll('.mood-btn')){
     if(day[slot]===b.dataset.mood) delete day[slot]; else day[slot]=b.dataset.mood; // tap again to clear
     const before=currentMood(now);
     moods={...moods,[d]:day};
+    if(Object.keys(day).length) synced.touch('m:'+d); else synced.remove('m:'+d);
     if(canStore) save(KEY_MOODS,moods);
     if(currentMood(now)!==before) themeSwitch(b,renderMood); // animate only when the theme changes
     else renderMood();
@@ -728,6 +730,68 @@ function route(){
 }
 window.addEventListener('hashchange',route);
 
+/* ---------- sync bridge (sync.js does the talking to the server) ---------- */
+// sync.js only sees the app through these functions: list everything as records, apply
+// a record that came from another device, and read/write photos.
+const sync=window.createSync?window.createSync({
+  load, save,
+  localRecords(){
+    const out={};
+    for(const [d,e] of Object.entries(mine)) out['e:'+d]=e;
+    for(const [d,m] of Object.entries(moods)) if(Object.keys(m).length) out['m:'+d]=m;
+    out['p:goals']=goals; out['p:settings']=settings;
+    for(const p of photos) out['f:'+p.date]={w:p.w,h:p.h};
+    return out;
+  },
+  apply(key,data){ // data null = deleted on the other device
+    const id=key.slice(2);
+    if(key.startsWith('e:')){ if(data) mine[id]=data; else delete mine[id]; if(Object.keys(mine).length) mode=canStore?'mine':'memory'; if(canStore) save(KEY_ENTRIES,mine); }
+    else if(key.startsWith('m:')){ moods={...moods}; if(data) moods[id]=data; else delete moods[id]; if(canStore) save(KEY_MOODS,moods); }
+    else if(key==='p:goals'){ goals={protein:null,steps:null,...(data||{})}; if(canStore) save(KEY_GOALS,goals); }
+    else if(key==='p:settings'){ settings={schedule:'daily',...(data||{})}; if(canStore) save(KEY_SETTINGS,settings); }
+  },
+  putPhoto:(date,blob,info)=>idb('readwrite',st=>st.put({date,blob,w:info.w,h:info.h,added:Date.now()})),
+  removePhoto:date=>idb('readwrite',st=>st.delete(date)),
+  photoBlob:async date=>(photoFor(date)||{}).blob||null,
+  refresh(){ fillGoals(); render(); renderMood(); loadIntoForm($('fDate').value||today()); loadPhotos(); },
+}):null;
+const synced={touch:k=>{if(sync)sync.touch(k);},remove:k=>{if(sync)sync.remove(k);}};
+// Settings → Sync panel, plus the dot next to the clock (steady = synced, pulsing fast =
+// syncing, red-orange = problem).
+function renderSync(){
+  const st=sync?sync.status():{state:'unconfigured'};
+  const on=st.state!=='unconfigured'&&st.state!=='loading'&&st.state!=='signedout'&&!!st.email;
+  $('syncSignedOut').hidden=!(st.state==='signedout'||(st.state==='error'&&!st.email));
+  $('syncSignedIn').hidden=!on;
+  const when=st.lastSync?st.lastSync.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}):null;
+  const text={
+    unconfigured:'Sync isn\'t set up yet. Your data stays on this device. See README → Sync to connect your phone and laptop.',
+    loading:'Connecting…',
+    signedout:'Sign in to sync your logs, moods and photos between devices.',
+    syncing:'Syncing…',
+    idle:when?'Synced at '+when+'.':'Signed in.',
+    error:'Sync problem: '+(st.error||'unknown error')+'.',
+  }[st.state];
+  $('syncStatus').textContent=(on?st.email+' · ':'')+text;
+  const dot=document.querySelector('.pulse');
+  dot.classList.toggle('syncing',st.state==='syncing'); dot.classList.toggle('sync-err',st.state==='error');
+  dot.title=st.state==='error'?'Sync problem':st.state==='syncing'?'Syncing':on?'Synced':'Online';
+}
+if(sync) sync.onChange(renderSync);
+async function syncAuth(kind){
+  const email=$('sEmail').value.trim(), pass=$('sPass').value;
+  const msg=$('syncMsg'); msg.className='msg';
+  if(!email||pass.length<6){msg.className='msg err';msg.textContent='Enter your email and a password of at least 6 characters.';return;}
+  msg.textContent=kind==='in'?'Signing in…':'Creating account…';
+  const err=kind==='in'?await sync.signIn(email,pass):await sync.signUp(email,pass);
+  if(err&&!err.startsWith('Account created')){msg.className='msg err';msg.textContent=err;}
+  else{msg.textContent=err; $('sPass').value='';}
+}
+$('sBtnIn').addEventListener('click',()=>syncAuth('in'));
+$('sBtnUp').addEventListener('click',()=>syncAuth('up'));
+$('sBtnNow').addEventListener('click',()=>sync.syncNow());
+$('sBtnOut').addEventListener('click',async()=>{ if(confirm('Sign out? Your data stays on this device; it just stops syncing.')) await sync.signOut(); });
+
 /* ---------- boot ---------- */
 example=buildExample();
 canStore=storageWorks();
@@ -745,7 +809,8 @@ tick(); setInterval(tick,30000); // keeps the greeting, clock and check-in slot 
 showQuote();
 route();
 playIntro();
-loadPhotos();
+renderSync();
+loadPhotos().then(()=>{if(sync)sync.init();});
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{
