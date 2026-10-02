@@ -25,6 +25,7 @@ npx serve .        # or: python3 -m http.server
 | `sync.js`    | Optional cloud sync through Supabase (off until `config.js` is filled in) |
 | `config.js`  | Your Supabase project URL and public anon key. Empty means no sync |
 | `supabase/setup.sql` | One-time database setup for sync: table, privacy rules, photo bucket |
+| `CLAUDE.md`  | Notes that new Claude sessions read automatically: structure, conventions, testing, workflow |
 | `quotes.js`  | The list of daily lines shown on the home screen. Add your own here |
 | `icons/`     | App icon: `icon.svg` (source), `favicon.svg`, and PNGs for the home screen |
 | `manifest.json` | Name and icons used when the app is added to a home screen     |
