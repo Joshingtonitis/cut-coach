@@ -23,6 +23,7 @@ screenshots of visual changes.
 | `supabase/setup.sql` | Database setup: `records` table, RLS policies, private `photos` bucket |
 | `supabase/health-import.sql` | Apple Health import: `ingest_keys` (hashed keys) + `ingest_nutrition()` security-definer function that merges calories/protein into `e:date` records |
 | `quotes.js` | Daily home-screen lines (`window.CUT_QUOTES`) |
+| `version.json`, `tools/release.sh` | Release version stamp. The script adds `?v=` to the local js/css links in `index.html` and writes `version.json`; the app's update check compares the two |
 | `README.md` | User-facing docs: how features and the stall check work. Keep it in sync with changes |
 
 ## How the code fits together
@@ -76,7 +77,7 @@ his phone.
 ## Workflow
 
 1. Branch from the latest `main`. Commit with clear messages.
-2. Test (see above), push, open a PR and merge it once Josh has said yes to the
+2. Test (see above). **Run `sh tools/release.sh` and commit its changes** (index.html + version.json) as the last step before pushing, so phones load the new version right away instead of a cached one. Then push, open a PR and merge it once Josh has said yes to the
    change. Then confirm the live site updated by fetching the page and grepping for
    the change.
 3. Tell Josh to fully close and reopen the home-screen app to get the new version.

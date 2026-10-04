@@ -1,5 +1,8 @@
 // Pinche Güey — weight-cut tracker. All data lives in this browser's localStorage.
 (function(){
+// The version this copy of the app was loaded with: the ?v= that tools/release.sh stamps
+// on app.js in index.html ('dev' when running unstamped, e.g. straight from the files).
+const APP_VERSION=(()=>{try{return new URL(document.currentScript.src).searchParams.get('v')||'dev';}catch(e){return 'dev';}})();
 const $=id=>document.getElementById(id);
 const pad=n=>String(n).padStart(2,'0');
 const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
@@ -827,9 +830,36 @@ function playIntro(){
 }
 $('intro').addEventListener('click',endIntro);
 let hiddenAt=null;
+/* ---------- update check ---------- */
+// GitHub Pages lets browsers keep the page for up to 10 minutes, so after a release a phone
+// can still open the old version. On launch and whenever you come back to the app, ask the
+// server for version.json (skipping every cache). If it's newer than this copy:
+//  - during the intro (you've just opened the app): reload straight into the new version
+//  - otherwise: show a small "tap to update" bar instead of interrupting you
+// Reloading uses a new address (?v=…), which forces a fresh copy of the page.
+function goToVersion(v){
+  try{sessionStorage.setItem('cutcoach.tried',v);}catch(e){}
+  location.replace(location.pathname+'?v='+v+location.hash);
+}
+async function checkForUpdate(){
+  if(APP_VERSION==='dev') return;
+  try{
+    const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok) return;
+    const v=(await r.json()).v;
+    if(!v||v===APP_VERSION) return;
+    let tried=null; try{tried=sessionStorage.getItem('cutcoach.tried');}catch(e){}
+    const introOn=!$('intro').hidden&&!$('intro').classList.contains('out');
+    if(introOn&&tried!==v) goToVersion(v);   // only auto-reload once per version (no loops)
+    else{ $('updateBar').hidden=false; $('updateBar').dataset.v=v; }
+  }catch(e){} // offline or no version.json: just keep running this copy
+}
+$('updateBar').addEventListener('click',()=>goToVersion($('updateBar').dataset.v));
+
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){hiddenAt=Date.now();return;}
   if(hiddenAt&&Date.now()-hiddenAt>10*60*1000){tick();playIntro();}
+  checkForUpdate();
   hiddenAt=null;
 });
 
@@ -974,6 +1004,7 @@ tick(); setInterval(tick,30000); // keeps the greeting, clock and check-in slot 
 showQuote();
 route();
 playIntro();
+checkForUpdate();
 renderSync();
 renderHealthImport();
 loadPhotos().then(()=>{booted=true;render();if(sync)sync.init();});

@@ -27,6 +27,7 @@ npx serve .        # or: python3 -m http.server
 | `supabase/setup.sql` | One-time database setup for sync: table, privacy rules, photo bucket |
 | `supabase/health-import.sql` | Adds the Apple Health import: import keys and the `ingest_nutrition` function |
 | `CLAUDE.md`  | Notes that new Claude sessions read automatically: structure, conventions, testing, workflow |
+| `version.json`, `tools/release.sh` | Release stamping: run `sh tools/release.sh` before publishing (see *Updates* below) |
 | `quotes.js`  | The list of daily lines shown on the home screen. Add your own here |
 | `icons/`     | App icon: `icon.svg` (source), `favicon.svg`, and PNGs for the home screen |
 | `manifest.json` | Name and icons used when the app is added to a home screen     |
@@ -227,6 +228,22 @@ date,weight_lb,trend_lb,calories,protein_g,steps,on_plan,hunger_1to5,energy_1to5
 
 Empty cells mean you didn't log that field. `trend_lb` is the smoothed trend
 weight described below, so you can chart it in a spreadsheet.
+
+## Updates
+
+GitHub Pages lets browsers keep a copy of the app for up to 10 minutes, so right
+after a release a phone could still open the old version. Two things prevent that:
+
+1. **Version stamps:** before each release, `sh tools/release.sh` adds `?v=<version>`
+   to the app's script and style links in `index.html` and writes the same version
+   to `version.json`. Each release's files get new addresses, so a page and its
+   code from different releases can never be mixed.
+2. **Update check:** when the app opens, and whenever you return to it, it fetches
+   `version.json` while skipping every cache. If a newer version is out:
+   - **During the opening animation:** the app reloads straight into the new
+     version. It does this only once per version, so it can't loop.
+   - **While you're using the app:** a **New version ready · tap to update** bar
+     appears at the top instead.
 
 ## Sync between phone and laptop
 
