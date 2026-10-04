@@ -14,8 +14,10 @@ const plural=(n,w)=>n+' '+w+(n===1?'':'s');
 let mode='loading'; // 'example' | 'mine' | 'memory'
 let mine={};        // date -> entry (real)
 let example={};
-let goals={protein:null,steps:null};
-let settings={schedule:'daily'};
+const GOAL_DEFAULTS={protein:null,steps:null,calories:null};
+const SETTING_DEFAULTS={schedule:'daily',checkinDay:0}; // checkinDay: 0 = Sunday … 6 = Saturday
+let goals={...GOAL_DEFAULTS};
+let settings={...SETTING_DEFAULTS};
 let moods={};       // date -> {morning:'locked', evening:'exhausted', ...}
 let onPlan=null;
 let ratings={hunger:null,energy:null,sleep:null}; // debrief ratings currently in the Log form
@@ -73,7 +75,9 @@ function buildExample(){
 }
 
 const entries=()=>mode==='example'?example:mine;
-const curGoals=()=>mode==='example'?{protein:160,steps:8000}:goals;
+const curGoals=()=>mode==='example'?{protein:160,steps:8000,calories:2200}:goals;
+// A day "has food" if any daily-fuel field was logged (as opposed to a weight-only check-in).
+const hasFood=e=>e.calories!=null||e.protein!=null||e.steps!=null||e.onPlan!=null;
 
 /* ---------- analysis ---------- */
 // Trend weight: each weigh-in pulls the trend part of the way toward it (alpha).
@@ -93,11 +97,12 @@ function analyze(){
   const inWin=days.filter(e=>e.date>=winStart&&e.date<=ref);
   const planKnown=inWin.filter(e=>e.onPlan!=null);
   const planRate=planKnown.length?planKnown.filter(e=>e.onPlan).length/planKnown.length:null;
-  // "Logged" means: daily = days with any entry; weekly/bi-weekly = weigh-ins on schedule.
+  // Two kinds of consistency: food logged daily, and check-ins (weigh-ins) on schedule.
+  const foodDays=inWin.filter(hasFood).length, foodRate=foodDays/S.win;
   const expected=S.win/S.every;
   // Extra weigh-ins beyond the schedule don't count twice, so the count is capped.
-  const logCount=isDaily()?inWin.length:Math.min(expected,pts.filter(p=>p.date>=winStart&&p.date<=ref).length);
-  const logRate=logCount/expected;
+  const checkCount=Math.min(expected,pts.filter(p=>p.date>=winStart&&p.date<=ref).length);
+  const checkRate=checkCount/expected;
   let rate=null, span=0;
   if(pts.length>=2){
     const last=pts[pts.length-1]; const back=trendAt(pts,addDays(last.date,-S.win))||pts[0];
@@ -115,7 +120,7 @@ function analyze(){
   }
   const last=pts[pts.length-1], prev=pts[pts.length-2];
   const how=isDaily()?'Weigh in each morning after the bathroom, before eating.'
-    :`Weigh in ${S.every===7?'once a week':'every two weeks'}, same day and time: in the morning, after the bathroom, before eating.`;
+    :`Check in ${S.every===7?'every':'every other'} ${DAY_NAMES[settings.checkinDay]}: weigh in first thing in the morning (after the bathroom, before eating), then take your photo.`;
   let v;
   if(pts.length<S.minPts){
     v={cls:'v-info',tag:'Getting started',head:`Log ${isDaily()?'about a week of':S.minPts} weigh-ins to unlock the stall check.`,why:`You have ${plural(pts.length,'weigh-in')} so far. Weight swings by a few pounds from water and salt, so the trend needs a few data points first.`,do:how};
@@ -124,22 +129,24 @@ function analyze(){
     v= scaleUp
       ? {cls:'v-good',tag:'Normal fluctuation',head:`The scale went up, but your trend is still dropping ${fmt(-rate)} lb a week.`,why:'A single jump is almost always water, salt, or a late meal. The trend line smooths that out and it is still heading down.',do:'Nothing to fix. Keep doing what you are doing.'}
       : {cls:'v-good',tag:'On track',head:`You're losing about ${fmt(-rate)} lb a week on trend.`,why:`Your trend weight has been moving down steadily over the last ${S.winLabel}.`,do:'Keep the plan the same. Don\'t cut harder just because it\'s working.'};
-  } else if((planRate!=null&&planRate<0.75)||logRate<0.7){
+  } else if((planRate!=null&&planRate<0.75)||foodRate<0.7||checkRate<0.7){
     const bits=[];
     if(planRate!=null&&planRate<0.75) bits.push(`you were on plan ${Math.round(planRate*100)}% of logged days`);
-    if(logRate<0.7) bits.push(isDaily()?`you logged ${logCount} of the last 14 days`:`you weighed in ${logCount} of the ${expected} scheduled times`);
+    if(foodRate<0.7) bits.push(`you logged food on ${foodDays} of ${S.win} days`);
+    if(checkRate<0.7) bits.push(isDaily()?`you weighed in ${checkCount} of the last 14 days`:`you checked in ${checkCount} of the ${expected} scheduled times`);
     v={cls:'v-warn',tag:'Consistency slipping',head:'Your progress stalled because the plan slipped, not because the plan stopped working.',why:`In the last ${S.winLabel} ${bits.join(' and ')}. Off-plan days can erase several on-plan days.`,do:pattern?'Fix the habit first: plan your weekends ahead of time.':'Fix the habit first. Aim for a full week on plan before changing anything else.'};
   } else if(span>=S.plateau){
     v={cls:'v-bad',tag:'True plateau',head:'You\'ve been consistent and the trend is flat. Time to adjust.',why:`You were on plan ${Math.round((planRate||0)*100)}% of days, but your trend moved ${rate==null?'about 0':fmt(rate)} lb/wk. Your body has likely adapted to this intake.`,do:'Make one small change: slightly lower intake, more daily steps, or a 1–2 week diet break at maintenance.'};
   } else {
     v={cls:'v-info',tag:'Too early to call',head:'The trend is flat, but it\'s too soon to call it a plateau.',why:`Real plateaus show up after ${S.plateau/7} or more consistent weeks. Short flat stretches are common.`,do:'Stay consistent and check back next week.'};
   }
-  return {v,rate,planRate,logCount,expected,pattern,pts,days};
+  return {v,rate,planRate,foodDays,checkCount,expected,pattern,pts,days};
 }
 
-// Daily streak: consecutive days (back from today, or yesterday if today isn't logged yet).
+// Daily streak: consecutive days that pass the test, counting back from today (or from
+// yesterday if today doesn't count yet, e.g. food hasn't been imported tonight).
 function streak(test){
-  const E=entries(); let d=today(); if(!E[d]) d=addDays(d,-1); let n=0;
+  const E=entries(); let d=today(); if(!(E[d]&&test(E[d]))) d=addDays(d,-1); let n=0;
   while(E[d]&&test(E[d])){n++;d=addDays(d,-1);} return n;
 }
 // Weigh-in streak for weekly/bi-weekly: consecutive periods that contain a weigh-in.
@@ -151,15 +158,31 @@ function periodStreak(pts,every){
   while(has(start,end)){n++;end=addDays(start,-1);start=addDays(end,-(every-1));}
   return n;
 }
-// "Next weigh-in" text for the home status card and the Log tab.
-function nextWeighIn(pts){
-  const S=sched(), lastW=pts.length?pts[pts.length-1].date:null;
-  if(isDaily()) return entries()[today()]?.weight!=null?'Weighed in today ✓':'Weigh-in due today';
-  if(!lastW) return 'Weigh-in due';
-  const due=addDays(lastW,S.every), d=diffDays(today(),due);
-  if(d>0) return 'Next weigh-in in '+plural(d,'day');
-  if(d===0) return 'Weigh-in due today';
-  return 'Weigh-in overdue by '+plural(-d,'day');
+// ---- Check-ins: weight + progress photo on a fixed day (weekly / bi-weekly) or daily ----
+const DAY_NAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const dayShort=date=>parse(date).toLocaleDateString(undefined,{weekday:'short'});
+// The first date on or after `date` that falls on weekday `dow`.
+function onOrAfter(date,dow){ return addDays(date,(dow-parse(date).getDay()+7)%7); }
+// When the next check-in is due and where you stand. A check-in up to ~2 days early or late
+// counts for the nearest check-in day, and the next one is due on the following check-in
+// day: Sunday → next Sunday, a late Tuesday → this Sunday (back on schedule), an early
+// Saturday → the Sunday after (not tomorrow). Bi-weekly works the same, a week further out.
+// state: done | due | overdue | upcoming
+function checkinStatus(pts){
+  const S=sched(), t=today(), lastW=pts.length?pts[pts.length-1].date:null;
+  const hasPhoto=lastW?!!photoFor(lastW):false;
+  if(isDaily()) return {state:lastW===t?'done':'due',due:t,lastW,hasPhoto};
+  const due=lastW?onOrAfter(addDays(lastW,S.every===7?3:10),settings.checkinDay):onOrAfter(t,settings.checkinDay);
+  const state=lastW===t?'done':t<due?(lastW&&diffDays(lastW,t)<S.every?'done':'upcoming'):t===due?'due':'overdue';
+  return {state,due,lastW,hasPhoto};
+}
+function checkinText(st){
+  if(isDaily()) return st.state==='done'?'Weighed in today ✓'+(st.hasPhoto?'':' · no photo yet'):'Weigh-in due today';
+  const when=dayShort(st.due)+' '+short(st.due);
+  if(st.state==='done') return 'Checked in '+short(st.lastW)+' ✓'+(st.hasPhoto?'':' · photo missing')+' · next '+when;
+  if(st.state==='due') return 'Check-in due today: weigh in + photo';
+  if(st.state==='overdue') return 'Check-in overdue · was due '+when;
+  return (st.lastW?'Next check-in ':'First check-in ')+when+' (in '+plural(diffDays(today(),st.due),'day')+')';
 }
 
 /* ---------- end-of-day debrief: hunger, energy, sleep (1–5) ---------- */
@@ -266,55 +289,103 @@ function render(){
   $('fRate').textContent=a.rate==null?'–':(a.rate>0?'+':'')+fmt(a.rate,2);
   $('fPlan').textContent=a.planRate==null?'–':Math.round(a.planRate*100)+'%';
   $('fPlanLbl').textContent='On plan, '+S.win+'d';
-  $('fLog').textContent=a.logCount+'/'+a.expected;
-  $('fLogLbl').textContent=isDaily()?'Days logged':'Weigh-ins';
+  $('fLog').textContent=a.foodDays+'/'+S.win;
+  $('fCheck').textContent=a.checkCount+'/'+a.expected;
+  $('fCheckLbl').textContent=isDaily()?'Weigh-ins':'Check-ins';
   const p=$('pattern');
   if(a.pattern){p.hidden=false;p.innerHTML='';const b=document.createElement('b');b.textContent='Weekend pattern: ';p.append(b,`you're on plan ${Math.round(a.pattern.wk*100)}% of weekend days vs ${Math.round(a.pattern.wd*100)}% on weekdays.`);} else p.hidden=true;
   renderChart(a.pts);
   const g=curGoals();
-  if(isDaily()){setStreak('sLog',streak(()=>true),'d');$('sLogLbl').textContent='Logging';}
-  else{setStreak('sLog',periodStreak(a.pts,S.every)*S.every/7,'wk');$('sLogLbl').textContent='Weigh-ins on schedule';}
-  setStreak('sPlan',streak(e=>e.onPlan===true),'d');
+  setStreak('sLog',streak(hasFood),'d');
+  setStreak('sCal',g.calories?streak(e=>e.calories!=null&&e.calories<=g.calories):0,'d');
   setStreak('sProt',g.protein?streak(e=>e.protein!=null&&e.protein>=g.protein):0,'d');
+  setStreak('sPlan',streak(e=>e.onPlan===true),'d');
+  if(isDaily()){setStreak('sCheck',streak(e=>e.weight!=null),'d');$('sCheckLbl').textContent='Weigh-ins';}
+  else{setStreak('sCheck',periodStreak(a.pts,S.every)*S.every/7,'wk');$('sCheckLbl').textContent='Check-ins on schedule';}
   renderRecap(a.pts);
   renderSignals();
   renderDebrief();
   renderHist(a.days);
   renderBanner();
   renderGallery();
-  // home status card + tab subtitles
-  const lp=a.pts[a.pts.length-1], next=nextWeighIn(a.pts);
+  // home cards + tab subtitles
+  const lp=a.pts[a.pts.length-1], ci=checkinStatus(a.pts), ciText=checkinText(ci);
   const t=$('hsTag'); t.textContent=v.tag; t.className='tag '+v.cls;
   $('hsTrend').textContent=lp?'Trend '+fmt(lp.t)+' lb':'No weigh-ins yet';
-  $('hsNext').textContent=next;
-  $('logHint').textContent=isDaily()?next+'.':next+'. Weight is optional on other days; you can still log food, steps and the plan.';
-  $('progSub').textContent=(isDaily()?'Daily':S.every===7?'Weekly':'Bi-weekly')+' weigh-ins · change in Settings';
+  $('hsNext').textContent=a.rate==null?'Trend needs a few more check-ins':(a.rate>0?'+':'')+fmt(a.rate,2)+' lb/wk on trend';
+  renderToday(ci,ciText);
+  renderCheckinCard(ci,ciText);
+  const sName=isDaily()?'Daily weigh-ins':(S.every===7?'Weekly':'Bi-weekly')+' check-ins on '+DAY_NAMES[settings.checkinDay]+'s';
+  $('progSub').textContent=sName+' · change in Settings';
+  $('logHint').textContent=(hiInfo.created?'Calories and protein fill in from Apple Health each night. ':'Log food every day. ')+(isDaily()?'Weigh in daily.':'Weigh in + photo on check-in day.');
   for(const b of document.querySelectorAll('[data-sched]')) b.setAttribute('aria-pressed',b.dataset.sched===settings.schedule);
+  for(const b of document.querySelectorAll('[data-day]')) b.setAttribute('aria-pressed',+b.dataset.day===settings.checkinDay);
+  $('ciDayField').hidden=isDaily();
+}
+// Calories / protein progress bars toward today's targets (used on Home and in the Log form).
+function fuelBars(box,cal,prot){
+  const g=curGoals(); box.innerHTML='';
+  const row=(name,val,goal,unit,overIsBad)=>{
+    const r=document.createElement('div'); r.className='fuel-row';
+    const pct=goal&&val!=null?Math.min(100,val/goal*100):0;
+    const state=val==null?'':goal?(overIsBad?(val>goal?'over':val>=goal*0.9?'hit':''):(val>=goal?'hit':'')):'';
+    const lbl=document.createElement('span'); lbl.className='fuel-name'; lbl.textContent=name;
+    const num=document.createElement('span'); num.className='fuel-num num'+(state?' '+state:'');
+    num.textContent=(val==null?'–':Math.round(val).toLocaleString())+(goal?' / '+goal.toLocaleString():'')+' '+unit;
+    const bar=document.createElement('span'); bar.className='fuel-bar'+(state?' '+state:'');
+    const fill=document.createElement('i'); fill.style.width=pct+'%'; bar.append(fill);
+    r.append(lbl,num,bar); box.append(r);
+  };
+  row('Calories',cal,g.calories,'kcal',true);
+  row('Protein',prot,g.protein,'g',false);
+}
+function renderToday(ci,ciText){
+  const e=entries()[today()]||{};
+  fuelBars($('homeFuel'),e.calories??null,e.protein??null);
+  $('todayState').textContent=hasFood(e)?'Logged ✓':'Not logged yet';
+  const c=$('todayCi'); c.textContent=ciText; c.className='today-ci '+ci.state;
+  $('todayCard').classList.toggle('alert',ci.state==='due'||ci.state==='overdue');
+}
+function renderCheckinCard(ci,ciText){
+  $('ciTitle').textContent=isDaily()?'Weigh-in':(sched().every===7?'Weekly':'Bi-weekly')+' check-in';
+  const st=$('ciStatus'); st.textContent=ciText; st.className='ci-status '+ci.state;
+  $('ciCard').classList.toggle('alert',ci.state==='due'||ci.state==='overdue');
 }
 function setStreak(id,n,unit){const el=$(id);el.textContent=n;const s=document.createElement('small');s.textContent=unit;el.append(s);}
 
-// Summary over the schedule's period: 7 days, 4 weeks or 8 weeks.
+// Summaries: daily fuel over the last 7 days, and check-ins over the schedule's period.
+function fillRecap(box,rows){
+  box.innerHTML='';
+  for(const[k,val] of rows){const d=document.createElement('div');const a=document.createElement('span');a.textContent=k;const b=document.createElement('span');b.className='num';b.textContent=val;d.append(a,b);box.append(d);}
+}
 function renderRecap(pts){
-  const S=sched(); const end=today(); const start=addDays(end,-(S.recap-1));
-  const span=Object.values(entries()).filter(e=>e.date>=start&&e.date<=end);
-  const avg=k=>{const v=span.map(e=>e[k]).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null};
+  const S=sched(), g=curGoals(), end=today(), all=Object.values(entries());
+  const inRange=(n)=>{const start=addDays(end,-(n-1));return all.filter(e=>e.date>=start&&e.date<=end);};
+  const avg=(list,k)=>{const v=list.map(e=>e[k]).filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null};
+  const n=x=>x==null?'–':Math.round(x).toLocaleString();
+  // Daily fuel, last 7 days
+  const wk=inRange(7), withCal=wk.filter(e=>e.calories!=null), withProt=wk.filter(e=>e.protein!=null), answered=wk.filter(e=>e.onPlan!=null);
+  fillRecap($('recapFood'),[
+    ['Avg calories',n(avg(wk,'calories'))+(g.calories?' / '+g.calories.toLocaleString():'')],
+    ['On calorie target',g.calories&&withCal.length?withCal.filter(e=>e.calories<=g.calories).length+' / '+withCal.length:'–'],
+    ['Avg protein',avg(wk,'protein')==null?'–':n(avg(wk,'protein'))+(g.protein?' / '+g.protein:'')+' g'],
+    ['Hit protein goal',g.protein&&withProt.length?withProt.filter(e=>e.protein>=g.protein).length+' / '+withProt.length:'–'],
+    ['Avg steps',n(avg(wk,'steps'))],
+    ['Days on plan',answered.length?answered.filter(e=>e.onPlan).length+' / '+answered.length:'–'],
+    ['Food logged',wk.filter(hasFood).length+' / 7'],
+  ]);
+  // Check-ins over the schedule's period (7 days, 4 weeks or 8 weeks)
+  const span=inRange(S.recap), start=addDays(end,-(S.recap-1));
   const tEnd=trendAt(pts,end), tStart=trendAt(pts,addDays(start,-1));
   const ch=tEnd&&tStart?tEnd.t-tStart.t:null;
-  const weighs=pts.filter(p=>p.date>=start&&p.date<=end).length;
-  const answered=span.filter(e=>e.onPlan!=null).length;
-  const rows=[
+  const weighs=pts.filter(p=>p.date>=start&&p.date<=end);
+  fillRecap($('recap'),[
     ['Trend change',ch==null?'–':(ch>0?'+':'')+fmt(ch)+' lb'],
-    ['Weigh-ins',weighs+' / '+S.recap/S.every],
-    ['Avg weight',avg('weight')==null?'–':fmt(avg('weight'))+' lb'],
-    ['Days on plan',answered?span.filter(e=>e.onPlan).length+' / '+answered:'–'],
-    ['Avg protein',avg('protein')==null?'–':Math.round(avg('protein'))+' g'],
-    ['Avg steps',avg('steps')==null?'–':Math.round(avg('steps')).toLocaleString()],
-    ['Avg calories',avg('calories')==null?'–':Math.round(avg('calories')).toLocaleString()],
-    ['Days logged',span.length+' / '+S.recap],
-  ];
-  $('recapTitle').textContent=S.recapLabel;
-  const r=$('recap'); r.innerHTML='';
-  for(const[k,val] of rows){const d=document.createElement('div');const a=document.createElement('span');a.textContent=k;const b=document.createElement('span');b.className='num';b.textContent=val;d.append(a,b);r.append(d);}
+    [isDaily()?'Weigh-ins':'Check-ins',weighs.length+' / '+S.recap/S.every],
+    ['Avg weight',avg(span,'weight')==null?'–':fmt(avg(span,'weight'))+' lb'],
+    ['Photos',photos.filter(p=>p.date>=start&&p.date<=end).length+' / '+S.recap/S.every],
+  ]);
+  $('recapTitle').textContent=(isDaily()?'Weigh-ins':'Check-ins')+' · '+S.recapLabel.toLowerCase();
 }
 
 function renderHist(days){
@@ -328,7 +399,7 @@ function renderHist(days){
     const w=document.createElement('span');w.className='w';w.textContent=e.weight!=null?fmt(e.weight):'—';
     const m=document.createElement('div');m.className='meta';
     const rated=hasRatings(e)?'H'+(e.hunger??'–')+' E'+(e.energy??'–')+' S'+(e.sleep??'–'):null;
-    m.textContent=[e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null,rated].filter(Boolean).join(' · ')||(e.weight!=null?'Weight only':'Habits only');
+    m.textContent=[e.weight!=null&&!isDaily()?'Check-in'+(photoFor(e.date)?' + photo':''):null,e.calories!=null?e.calories.toLocaleString()+' cal':null,e.protein!=null?e.protein+' g protein':null,e.steps!=null?e.steps.toLocaleString()+' steps':null,rated].filter(Boolean).join(' · ')||(e.weight!=null?'Weight only':'Habits only');
     mid.append(w,m);
     const pl=document.createElement('span');pl.className='pill '+(e.onPlan===true?'yes':e.onPlan===false?'no':'na');pl.textContent=e.onPlan===true?'On plan':e.onPlan===false?'Off plan':'—';
     b.append(d,mid,pl); b.addEventListener('click',()=>editDay(e.date)); h.append(b);
@@ -373,49 +444,92 @@ function renderBanner(){
 function setPlan(v){onPlan=v;$('planYes').setAttribute('aria-pressed',v===true);$('planNo').setAttribute('aria-pressed',v===false);}
 $('planYes').onclick=()=>setPlan(onPlan===true?null:true);
 $('planNo').onclick=()=>setPlan(onPlan===false?null:false);
+// Daily fuel form: food, steps, plan, debrief. Only these fields are written; the day's
+// weight (from a check-in) is left as it is.
+const DAILY_FIELDS=['calories','protein','steps','onPlan','hunger','energy','sleep'];
 function loadIntoForm(date){
   const e=entries()[date]||{};
-  $('fDate').value=date; $('fWeight').value=e.weight??''; $('fCal').value=e.calories??''; $('fProt').value=e.protein??''; $('fSteps').value=e.steps??'';
+  $('fDate').value=date; $('fCal').value=e.calories??''; $('fProt').value=e.protein??''; $('fSteps').value=e.steps??'';
   setPlan(e.onPlan??null);
   ratings={hunger:e.hunger??null,energy:e.energy??null,sleep:e.sleep??null}; paintRates($('formRates'),ratings);
-  const exists=!!entries()[date]&&mode!=='example';
+  const exists=mode!=='example'&&!!entries()[date]&&(hasFood(e)||hasRatings(e));
   $('delBtn').hidden=!exists;
-  $('formTitle').textContent=date===today()?'Log today':'Edit '+short(date);
+  $('formTitle').textContent=date===today()?'Today\'s fuel':'Fuel · '+short(date);
   $('saveBtn').textContent=exists?'Update day':'Save day';
   $('formMsg').textContent=''; $('formMsg').className='msg';
+  updateFormFuel();
+}
+function updateFormFuel(){ fuelBars($('formFuel'),numOrNull('fCal'),numOrNull('fProt')); }
+$('fCal').addEventListener('input',updateFormFuel); $('fProt').addEventListener('input',updateFormFuel);
+// Check-in form: weight for a date (the photo for that date saves on its own when picked).
+function loadCheckin(date){
+  const e=entries()[date]||{};
+  $('ciDate').value=date; $('ciWeight').value=mode==='example'?'':(e.weight??'');
+  const has=mode!=='example'&&e.weight!=null;
+  $('ciDel').hidden=!has; $('ciSave').textContent=has?'Update weight':'Save weight';
+  $('ciMsg').textContent=''; $('ciMsg').className='msg';
   renderPhotoField();
 }
-// Tapping a day in History: switch to the Log tab with that day loaded.
-function editDay(date){ location.hash='log'; loadIntoForm(date); }
+// Tapping a day in History: switch to the Log tab with that day loaded in both cards.
+function editDay(date){ location.hash='log'; loadIntoForm(date); loadCheckin(date); }
 $('fDate').addEventListener('change',()=>{if($('fDate').value) loadIntoForm($('fDate').value)});
+$('ciDate').addEventListener('change',()=>{if($('ciDate').value) loadCheckin($('ciDate').value)});
 const numOrNull=id=>{const v=$(id).value.trim();return v===''?null:Number(v)};
+// Writes fields into a day's record, deleting the record if nothing is left in it.
+function saveDay(date,fields){
+  if(mode==='example') mode=canStore?'mine':'memory';
+  const e={...(mine[date]||{}),date,...fields};
+  const empty=e.weight==null&&!hasFood(e)&&!hasRatings(e);
+  if(empty){ delete mine[date]; synced.remove('e:'+date); } else { mine[date]=e; synced.touch('e:'+date); }
+  render();
+  return !canStore||save(KEY_ENTRIES,mine);
+}
 $('form').addEventListener('submit',ev=>{
   ev.preventDefault();
   const msg=$('formMsg'); msg.className='msg';
   const date=$('fDate').value;
   if(!date){msg.className='msg err';msg.textContent='Pick a date first.';return;}
-  const e={date,weight:numOrNull('fWeight'),calories:numOrNull('fCal'),protein:numOrNull('fProt'),steps:numOrNull('fSteps'),onPlan,...ratings};
-  if(e.weight==null&&e.calories==null&&e.protein==null&&e.steps==null&&e.onPlan==null&&!hasRatings(e)){msg.className='msg err';msg.textContent='Enter at least one number, answer "Stuck to plan?", or rate the day.';return;}
-  if(e.weight!=null&&(e.weight<50||e.weight>700)){msg.className='msg err';msg.textContent='Weight should be in pounds, between 50 and 700.';return;}
-  if(mode==='example') mode=canStore?'mine':'memory';
-  mine[date]=e; render(); loadIntoForm(date); synced.touch('e:'+date);
+  const f={calories:numOrNull('fCal'),protein:numOrNull('fProt'),steps:numOrNull('fSteps'),onPlan,...ratings};
+  if(!hasFood(f)&&!hasRatings(f)){msg.className='msg err';msg.textContent='Enter calories, protein or steps, answer "Stuck to plan?", or rate the day.';return;}
+  const ok=saveDay(date,f); loadIntoForm(date);
   if(!canStore) msg.textContent='Saved for this session.';
-  else if(save(KEY_ENTRIES,mine)) msg.textContent='Saved.';
+  else if(ok) msg.textContent='Saved.';
   else {msg.className='msg err';msg.textContent='Couldn\'t save. Your browser storage may be full.';}
 });
 $('delBtn').addEventListener('click',()=>{
   const date=$('fDate').value; if(!mine[date]) return;
-  delete mine[date]; render(); loadIntoForm(date); $('formMsg').textContent='Deleted.'; synced.remove('e:'+date);
-  if(canStore&&!save(KEY_ENTRIES,mine)){$('formMsg').className='msg err';$('formMsg').textContent='Couldn\'t delete. Try again.';}
+  saveDay(date,Object.fromEntries(DAILY_FIELDS.map(k=>[k,null]))); loadIntoForm(date);
+  $('formMsg').textContent='Cleared.';
+});
+$('ciForm').addEventListener('submit',ev=>{
+  ev.preventDefault();
+  const msg=$('ciMsg'); msg.className='msg';
+  const date=$('ciDate').value, w=numOrNull('ciWeight');
+  if(!date){msg.className='msg err';msg.textContent='Pick a date first.';return;}
+  if(w==null||w<50||w>700){msg.className='msg err';msg.textContent='Enter your weight in pounds (50–700).';return;}
+  const ok=saveDay(date,{weight:w}); loadCheckin(date);
+  msg.textContent=!canStore?'Saved for this session.':ok?(photoFor(date)?'Check-in saved ✓':'Weight saved. Add your photo to finish the check-in.'):'Couldn\'t save.';
+});
+$('ciDel').addEventListener('click',()=>{
+  const date=$('ciDate').value; if(!mine[date]||mine[date].weight==null) return;
+  saveDay(date,{weight:null}); loadCheckin(date); $('ciMsg').textContent='Weight removed.';
 });
 
 /* ---------- settings: goals + weigh-in schedule ---------- */
-function fillGoals(){$('gProt').value=goals.protein??'';$('gSteps').value=goals.steps??'';}
+function fillGoals(){$('gCal').value=goals.calories??'';$('gProt').value=goals.protein??'';$('gSteps').value=goals.steps??'';}
 $('goalSave').addEventListener('click',()=>{
-  goals={protein:numOrNull('gProt'),steps:numOrNull('gSteps')}; synced.touch('p:goals');
+  goals={calories:numOrNull('gCal'),protein:numOrNull('gProt'),steps:numOrNull('gSteps')}; synced.touch('p:goals');
   render(); $('goalMsg').textContent='Saved.';
   if(canStore&&!save(KEY_GOALS,goals)) $('goalMsg').textContent='Couldn\'t save goals. Try again.';
 });
+// Check-in day (weekly / bi-weekly).
+for(const b of document.querySelectorAll('[data-day]')){
+  b.addEventListener('click',()=>{
+    settings={...settings,checkinDay:+b.dataset.day}; synced.touch('p:settings');
+    if(canStore) save(KEY_SETTINGS,settings);
+    render();
+  });
+}
 // The schedule buttons appear in both Progress and Settings; they share one setting.
 for(const b of document.querySelectorAll('[data-sched]')){
   b.addEventListener('click',()=>{
@@ -452,6 +566,7 @@ $('exportBtn').addEventListener('click',()=>{
 // side as JPEG (roughly 150–300 KB) before saving. Nothing leaves the phone.
 const PHOTO_DB='pinche-guey', PHOTO_STORE='photos';
 let photoDBp=null, photos=[], photoURL={}; // photos: [{date,blob,w,h}] oldest first; photoURL: date -> object URL
+let booted=false; // true once photos have loaded at startup (photo changes then refresh the whole UI)
 function photoDB(){
   if(!photoDBp) photoDBp=new Promise((res,rej)=>{
     if(!window.indexedDB) return rej(new Error('IndexedDB unavailable'));
@@ -488,43 +603,45 @@ async function loadPhotos(){
   catch(e){ photos=[]; $('galleryMsg').textContent='Photos aren\'t available in this browser.'; }
   for(const u of Object.values(photoURL)) URL.revokeObjectURL(u);
   photoURL={}; for(const p of photos) photoURL[p.date]=URL.createObjectURL(p.blob);
-  renderPhotoField(); renderGallery();
+  renderPhotoField(); renderGallery(); if(booted) render();
 }
 const photoFor=date=>photos.find(p=>p.date===date)||null;
 const weightOn=date=>mine[date]?.weight??null; // real entries only, never example data
 const photoCap=date=>short(date)+(weightOn(date)!=null?' · '+fmt(weightOn(date))+' lb':'');
 // Log tab: photo for the date in the form, plus whether a photo is due on your schedule.
 function renderPhotoField(){
-  const date=$('fDate').value, p=photoFor(date);
+  const date=$('ciDate').value, p=photoFor(date);
   $('photoThumb').hidden=!p; $('photoDel').hidden=!p;
   if(p) $('photoPrev').src=photoURL[date];
   $('photoAddLbl').textContent=p?'Replace':'Add photo';
-  const S=sched(), last=photos.length?photos[photos.length-1].date:null;
+  const last=photos.length?photos[photos.length-1].date:null;
   let msg;
   if(p) msg='Photo saved for '+short(date)+'.';
-  else if(!last) msg='Take one now as your starting point. Same spot, light and pose each time.';
-  else{ const due=addDays(last,S.every); msg=today()>=due?'Photo due. Last one was '+short(last)+'.':'Next photo '+(isDaily()?'tomorrow':'on '+short(due))+'. Last one was '+short(last)+'.'; }
+  else if(!last) msg='Take one as your starting point. Same spot, light and pose each check-in.';
+  else msg='No photo for '+short(date)+' yet. Last one was '+short(last)+'.';
   $('photoMsg').textContent=msg;
 }
 $('photoInput').addEventListener('change',async ev=>{
   const file=ev.target.files&&ev.target.files[0]; ev.target.value=''; // reset so picking the same file again still fires
   if(!file) return;
-  const date=$('fDate').value; if(!date){$('photoMsg').textContent='Pick a date first.';return;}
+  const date=$('ciDate').value; if(!date){$('photoMsg').textContent='Pick a date first.';return;}
   $('photoMsg').textContent='Saving photo…';
   try{
     const {blob,w,h}=await compressImage(file);
     await idb('readwrite',st=>st.put({date,blob,w,h,added:Date.now()})); synced.touch('f:'+date);
     if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{}); // ask the browser not to clear it
     await loadPhotos();
+    $('ciMsg').className='msg';
+    $('ciMsg').textContent=mine[date]&&mine[date].weight!=null?'Check-in complete ✓':'Photo saved. Add your weight to finish the check-in.';
   }catch(e){ $('photoMsg').textContent='Couldn\'t save that photo. Try a different one.'; }
 });
 $('photoDel').addEventListener('click',async()=>{
-  const date=$('fDate').value;
+  const date=$('ciDate').value;
   if(!confirm('Remove the progress photo for '+short(date)+'?')) return;
   try{ await idb('readwrite',st=>st.delete(date)); synced.remove('f:'+date); await loadPhotos(); }
   catch(e){ $('photoMsg').textContent='Couldn\'t remove the photo. Try again.'; }
 });
-$('photoThumb').addEventListener('click',()=>openViewer($('fDate').value));
+$('photoThumb').addEventListener('click',()=>openViewer($('ciDate').value));
 // Progress → Visual log: first vs latest side by side, then every photo newest first.
 function renderGallery(){
   const g=$('gallery'); g.innerHTML='';
@@ -747,13 +864,13 @@ const sync=window.createSync?window.createSync({
     const id=key.slice(2);
     if(key.startsWith('e:')){ if(data) mine[id]=data; else delete mine[id]; if(Object.keys(mine).length) mode=canStore?'mine':'memory'; if(canStore) save(KEY_ENTRIES,mine); }
     else if(key.startsWith('m:')){ moods={...moods}; if(data) moods[id]=data; else delete moods[id]; if(canStore) save(KEY_MOODS,moods); }
-    else if(key==='p:goals'){ goals={protein:null,steps:null,...(data||{})}; if(canStore) save(KEY_GOALS,goals); }
-    else if(key==='p:settings'){ settings={schedule:'daily',...(data||{})}; if(canStore) save(KEY_SETTINGS,settings); }
+    else if(key==='p:goals'){ goals={...GOAL_DEFAULTS,...(data||{})}; if(canStore) save(KEY_GOALS,goals); }
+    else if(key==='p:settings'){ settings={...SETTING_DEFAULTS,...(data||{})}; if(canStore) save(KEY_SETTINGS,settings); }
   },
   putPhoto:(date,blob,info)=>idb('readwrite',st=>st.put({date,blob,w:info.w,h:info.h,added:Date.now()})),
   removePhoto:date=>idb('readwrite',st=>st.delete(date)),
   photoBlob:async date=>(photoFor(date)||{}).blob||null,
-  refresh(){ fillGoals(); render(); renderMood(); loadIntoForm($('fDate').value||today()); loadPhotos(); },
+  refresh(){ fillGoals(); render(); renderMood(); loadIntoForm($('fDate').value||today()); loadCheckin($('ciDate').value||today()); loadPhotos(); },
 }):null;
 const synced={touch:k=>{if(sync)sync.touch(k);},remove:k=>{if(sync)sync.remove(k);}};
 // Settings → Sync panel, plus the dot next to the clock (steady = synced, pulsing fast =
@@ -845,27 +962,27 @@ example=buildExample();
 canStore=storageWorks();
 if(canStore){
   mine=load(KEY_ENTRIES,{});
-  goals={protein:null,steps:null,...load(KEY_GOALS,{})};
-  settings={schedule:'daily',...load(KEY_SETTINGS,{})};
+  goals={...GOAL_DEFAULTS,...load(KEY_GOALS,{})};
+  settings={...SETTING_DEFAULTS,...load(KEY_SETTINGS,{})};
   moods=load(KEY_MOODS,{});
 }
 mode=Object.keys(mine).length?'mine':'example';
 buildRates($('formRates'),(k,v)=>{ratings={...ratings,[k]:ratings[k]===v?null:v};paintRates($('formRates'),ratings);});
 buildRates($('debriefRates'),(k,v)=>rateDay($('debriefCard').dataset.date,k,v));
-fillGoals(); loadIntoForm(today()); render();
+fillGoals(); loadIntoForm(today()); loadCheckin(today()); render();
 tick(); setInterval(tick,30000); // keeps the greeting, clock and check-in slot current
 showQuote();
 route();
 playIntro();
 renderSync();
 renderHealthImport();
-loadPhotos().then(()=>{if(sync)sync.init();});
+loadPhotos().then(()=>{booted=true;render();if(sync)sync.init();});
 
 // If the app is open in two tabs, pick up changes saved in the other one.
 window.addEventListener('storage',ev=>{
   if(ev.key===KEY_ENTRIES){mine=load(KEY_ENTRIES,{});if(Object.keys(mine).length) mode='mine';}
-  else if(ev.key===KEY_GOALS){goals={protein:null,steps:null,...load(KEY_GOALS,{})};fillGoals();}
-  else if(ev.key===KEY_SETTINGS){settings={schedule:'daily',...load(KEY_SETTINGS,{})};}
+  else if(ev.key===KEY_GOALS){goals={...GOAL_DEFAULTS,...load(KEY_GOALS,{})};fillGoals();}
+  else if(ev.key===KEY_SETTINGS){settings={...SETTING_DEFAULTS,...load(KEY_SETTINGS,{})};}
   else if(ev.key===KEY_MOODS){moods=load(KEY_MOODS,{});renderMood();return;}
   else return;
   render();

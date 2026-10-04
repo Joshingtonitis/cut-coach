@@ -35,8 +35,12 @@ screenshots of visual changes.
   key names**: renaming them would orphan Josh's existing data.
 - **Example data** shows until the first real entry (`mode==='example'`). It's never
   saved, synced or exported.
-- **Weigh-in schedules:** everything schedule-dependent is in the `SCHEDULES` table
-  (daily / weekly / bi-weekly).
+- **Two logging rhythms:** daily fuel (calories, protein, steps, plan, debrief) and
+  check-ins (weight + photo) on `settings.checkinDay` per the schedule. The two Log
+  cards write disjoint fields into the same `e:date` record via `saveDay()`.
+  `checkinStatus()` / `checkinText()` compute due / done / overdue.
+- **Check-in schedules:** everything schedule-dependent is in the `SCHEDULES` table
+  (daily / weekly / bi-weekly). Goals are `{calories, protein, steps}`.
 - **Sync:** data is stored as records (`e:date`, `m:date`, `p:goals`, `p:settings`,
   `f:date`), and the newer change wins. **Any new kind of user data must be added to
   the bridge's `localRecords()` / `apply()`, and every local change must call

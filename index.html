@@ -84,6 +84,13 @@
       <div class="rates" id="debriefRates"></div>
     </div>
 
+    <!-- Today at a glance: calories and protein toward your targets, and check-in status. -->
+    <a class="today panel hud" id="todayCard" href="#log">
+      <div class="card-head"><span class="kicker">Today</span><span class="card-state" id="todayState"></span></div>
+      <div class="fuel" id="homeFuel"></div>
+      <div class="today-ci" id="todayCi"></div>
+    </a>
+
     <a class="status hud" href="#progress">
       <span class="tag" id="hsTag">–</span>
       <span class="status-main"><span class="status-trend" id="hsTrend">–</span><span class="status-next" id="hsNext"></span></span>
@@ -91,44 +98,66 @@
     </a>
   </section>
 
-  <!-- LOG -->
+  <!-- LOG: two separate cards. "Today's fuel" is daily (food, protein, steps, plan,
+       debrief); "Check-in" is weekly by default (weight + progress photo). Both write to
+       the same day's record but only touch their own fields. -->
   <section class="view" data-view="log" hidden>
-    <header class="tabhead"><span class="mod">MOD.01</span><h2 id="formTitle">Log today</h2><p class="sub" id="logHint"></p></header>
-    <div class="panel hud">
-    <form id="form" novalidate>
-      <div class="field"><label for="fDate">Date</label><input id="fDate" type="date" required></div>
-      <div class="field"><label for="fWeight">Weight (lb)</label><input id="fWeight" type="number" inputmode="decimal" step="0.1" min="50" max="700" placeholder="e.g. 182.4"></div>
-      <div class="field"><label for="fCal">Calories</label><input id="fCal" type="number" inputmode="numeric" step="10" min="0" placeholder="optional"></div>
-      <div class="field"><label for="fProt">Protein (g)</label><input id="fProt" type="number" inputmode="numeric" step="1" min="0" placeholder="optional"></div>
-      <div class="field"><label for="fSteps">Steps</label><input id="fSteps" type="number" inputmode="numeric" step="100" min="0" placeholder="optional"></div>
-      <div class="field"><span class="lbltxt" id="planLbl">Stuck to plan?</span>
-        <div class="seg" role="group" aria-labelledby="planLbl">
-          <button type="button" class="yes" id="planYes" aria-pressed="false">Yes</button>
-          <button type="button" class="no" id="planNo" aria-pressed="false">No</button>
-        </div>
-      </div>
-      <div class="field full"><span class="lbltxt">End-of-day debrief · optional</span><div class="rates" id="formRates"></div></div>
-      <!-- Progress photo for the selected date. Saved on pick (no need to press Save day). -->
-      <div class="field full">
-        <span class="lbltxt">Progress photo · optional</span>
-        <div class="photo-field">
-          <button type="button" class="photo-thumb" id="photoThumb" aria-label="View photo" hidden><img id="photoPrev" alt=""></button>
-          <div class="photo-side">
-            <p class="msg" id="photoMsg"></p>
-            <div class="photo-actions">
-              <label class="btn ghost small" for="photoInput" id="photoAddLbl">Add photo</label>
-              <button class="btn ghost small" type="button" id="photoDel" hidden>Remove</button>
-            </div>
+    <header class="tabhead"><span class="mod">MOD.01</span><h2>Log</h2><p class="sub" id="logHint"></p></header>
+
+    <div class="block">
+      <h3 class="kicker" id="formTitle">Today's fuel</h3>
+      <div class="panel hud">
+      <form id="form" novalidate>
+        <div class="field"><label for="fDate">Day</label><input id="fDate" type="date" required></div>
+        <div class="field"><label for="fSteps">Steps</label><input id="fSteps" type="number" inputmode="numeric" step="100" min="0" placeholder="optional"></div>
+        <div class="field"><label for="fCal">Calories</label><input id="fCal" type="number" inputmode="numeric" step="10" min="0" placeholder="kcal"></div>
+        <div class="field"><label for="fProt">Protein (g)</label><input id="fProt" type="number" inputmode="numeric" step="1" min="0" placeholder="grams"></div>
+        <div class="field full fuel" id="formFuel"></div>
+        <div class="field full"><span class="lbltxt" id="planLbl">Stuck to plan?</span>
+          <div class="seg" role="group" aria-labelledby="planLbl">
+            <button type="button" class="yes" id="planYes" aria-pressed="false">Yes</button>
+            <button type="button" class="no" id="planNo" aria-pressed="false">No</button>
           </div>
         </div>
-        <input class="sr-only" type="file" id="photoInput" accept="image/*">
+        <div class="field full"><span class="lbltxt">End-of-day debrief · optional</span><div class="rates" id="formRates"></div></div>
+        <div class="actions">
+          <button class="btn" type="submit" id="saveBtn">Save day</button>
+          <button class="btn ghost" type="button" id="delBtn" hidden>Clear day</button>
+          <span class="msg" id="formMsg" role="status"></span>
+        </div>
+      </form>
       </div>
-      <div class="actions">
-        <button class="btn" type="submit" id="saveBtn">Save day</button>
-        <button class="btn ghost" type="button" id="delBtn" hidden>Delete this day</button>
-        <span class="msg" id="formMsg" role="status"></span>
+    </div>
+
+    <div class="block">
+      <h3 class="kicker" id="ciTitle">Weekly check-in</h3>
+      <div class="panel hud checkin" id="ciCard">
+        <p class="ci-status" id="ciStatus"></p>
+        <form id="ciForm" novalidate>
+          <div class="field"><label for="ciDate">Check-in date</label><input id="ciDate" type="date" required></div>
+          <div class="field"><label for="ciWeight">Weight (lb)</label><input id="ciWeight" type="number" inputmode="decimal" step="0.1" min="50" max="700" placeholder="e.g. 182.4"></div>
+          <!-- Progress photo for the check-in date. Saved on pick (no need to press Save). -->
+          <div class="field full">
+            <span class="lbltxt">Progress photo</span>
+            <div class="photo-field">
+              <button type="button" class="photo-thumb" id="photoThumb" aria-label="View photo" hidden><img id="photoPrev" alt=""></button>
+              <div class="photo-side">
+                <p class="msg" id="photoMsg"></p>
+                <div class="photo-actions">
+                  <label class="btn ghost small" for="photoInput" id="photoAddLbl">Add photo</label>
+                  <button class="btn ghost small" type="button" id="photoDel" hidden>Remove</button>
+                </div>
+              </div>
+            </div>
+            <input class="sr-only" type="file" id="photoInput" accept="image/*">
+          </div>
+          <div class="actions">
+            <button class="btn" type="submit" id="ciSave">Save weight</button>
+            <button class="btn ghost" type="button" id="ciDel" hidden>Remove weight</button>
+            <span class="msg" id="ciMsg" role="status"></span>
+          </div>
+        </form>
       </div>
-    </form>
     </div>
   </section>
 
@@ -146,7 +175,8 @@
         <div class="facts">
           <div class="fact"><div class="num" id="fRate">–</div><div class="lbl">Trend lb/wk</div></div>
           <div class="fact"><div class="num" id="fPlan">–</div><div class="lbl" id="fPlanLbl">On plan</div></div>
-          <div class="fact"><div class="num" id="fLog">–</div><div class="lbl" id="fLogLbl">Days logged</div></div>
+          <div class="fact"><div class="num" id="fLog">–</div><div class="lbl" id="fLogLbl">Food logged</div></div>
+          <div class="fact"><div class="num" id="fCheck">–</div><div class="lbl" id="fCheckLbl">Check-ins</div></div>
         </div>
         <p class="pattern" id="pattern" hidden></p>
       </div>
@@ -161,7 +191,14 @@
     </div>
 
     <div class="block">
-      <h3 class="kicker" id="recapTitle">Last 7 days</h3>
+      <h3 class="kicker">Daily fuel · last 7 days</h3>
+      <div class="panel hud">
+        <div class="recap" id="recapFood"></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <h3 class="kicker" id="recapTitle">Check-ins</h3>
       <div class="panel hud">
         <div class="seg sched" role="group" aria-label="Weigh-in schedule">
           <button type="button" data-sched="daily" aria-pressed="false">Daily</button>
@@ -196,9 +233,11 @@
     <div class="block">
       <h3 class="kicker">Streaks</h3>
       <div class="streaks">
-        <div class="streak hud"><div class="num" id="sLog">0<small>d</small></div><div class="lbl" id="sLogLbl">Logging</div></div>
-        <div class="streak hud"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
+        <div class="streak hud"><div class="num" id="sLog">0<small>d</small></div><div class="lbl">Food logged</div></div>
+        <div class="streak hud"><div class="num" id="sCal">0<small>d</small></div><div class="lbl">Calorie target</div></div>
         <div class="streak hud"><div class="num" id="sProt">0<small>d</small></div><div class="lbl">Protein goal</div></div>
+        <div class="streak hud"><div class="num" id="sPlan">0<small>d</small></div><div class="lbl">On plan</div></div>
+        <div class="streak hud"><div class="num" id="sCheck">0<small>wk</small></div><div class="lbl" id="sCheckLbl">Check-ins on schedule</div></div>
       </div>
     </div>
   </section>
@@ -216,13 +255,25 @@
   <section class="view" data-view="settings" hidden>
     <header class="tabhead"><span class="mod">MOD.04</span><h2>Settings</h2></header>
     <div class="block">
-      <h3 class="kicker">Weigh-in schedule</h3>
+      <h3 class="kicker">Check-in schedule</h3>
       <div class="panel hud">
-        <p class="msg">How often you step on the scale. The stall check, trend line, summary and streaks all adjust to it.</p>
+        <p class="msg">How often you weigh in and take a progress photo. Food is always logged daily. The stall check, trend line and check-in streak adjust to this.</p>
         <div class="seg sched" role="group" aria-label="Weigh-in schedule">
           <button type="button" data-sched="daily" aria-pressed="false">Daily</button>
           <button type="button" data-sched="weekly" aria-pressed="false">Weekly</button>
           <button type="button" data-sched="biweekly" aria-pressed="false">Bi-weekly</button>
+        </div>
+        <div class="field" id="ciDayField">
+          <span class="lbltxt" id="ciDayLbl">Check-in day</span>
+          <div class="seg days" role="group" aria-labelledby="ciDayLbl">
+            <button type="button" data-day="0" aria-label="Sunday" aria-pressed="false">S</button>
+            <button type="button" data-day="1" aria-label="Monday" aria-pressed="false">M</button>
+            <button type="button" data-day="2" aria-label="Tuesday" aria-pressed="false">T</button>
+            <button type="button" data-day="3" aria-label="Wednesday" aria-pressed="false">W</button>
+            <button type="button" data-day="4" aria-label="Thursday" aria-pressed="false">T</button>
+            <button type="button" data-day="5" aria-label="Friday" aria-pressed="false">F</button>
+            <button type="button" data-day="6" aria-label="Saturday" aria-pressed="false">S</button>
+          </div>
         </div>
       </div>
     </div>
@@ -230,6 +281,7 @@
       <h3 class="kicker">Goals</h3>
       <div class="panel hud">
         <div class="goals">
+          <div class="field"><label for="gCal">Daily calorie target</label><input id="gCal" type="number" inputmode="numeric" min="0" step="50" placeholder="e.g. 2200"></div>
           <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
           <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
           <div class="actions"><button class="btn small" type="button" id="goalSave">Save goals</button><span class="msg" id="goalMsg" role="status"></span></div>

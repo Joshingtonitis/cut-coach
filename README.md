@@ -21,7 +21,7 @@ npx serve .        # or: python3 -m http.server
 |--------------|---------------------------------------------------------------------|
 | `index.html` | The five tabs (Home, Log, Progress, History, Settings) and the bottom tab bar |
 | `styles.css` | All styling: the sci-fi HUD theme built on CSS variables, the three mood themes, and the intro animation |
-| `app.js`     | Data storage, weigh-in schedules, the stall-check analysis, end-of-day debrief and body signals, rendering, CSV export, the greeting, intro, mood check-ins and tab navigation |
+| `app.js`     | Data storage, check-in schedules, the stall-check analysis, end-of-day debrief and body signals, rendering, CSV export, the greeting, intro, mood check-ins and tab navigation |
 | `sync.js`    | Optional cloud sync through Supabase (off until `config.js` is filled in) |
 | `config.js`  | Your Supabase project URL and public anon key. Empty means no sync |
 | `supabase/setup.sql` | One-time database setup for sync: table, privacy rules, photo bucket |
@@ -33,25 +33,38 @@ npx serve .        # or: python3 -m http.server
 
 ## What you log
 
-Each day can have any of these fields. All are optional, but you need at least one.
+Logging has two separate rhythms. Each has its own card on the **Log** tab.
 
-- **Weight** (lb). The stall check runs on this.
-- **Calories**, **protein** (g), **steps**
+### Today's fuel (every day)
+
+- **Calories** and **protein** (g). These fill in automatically each night if
+  you've set up the Apple Health import (below). Live bars show how you're doing
+  against your daily calorie target and protein goal.
+- **Steps**
 - **Stuck to plan?** Yes or no. This is your own honest call for the day.
 - **End-of-day debrief:** three 1–5 ratings.
   - **Hunger:** 1 = not hungry, 5 = starving.
   - **Energy:** 1 = drained, 5 = charged.
   - **Sleep quality:** 1 = terrible, 5 = great. This is last night's sleep.
 
-- **Progress photo** (Log tab): one photo per date. You can take it with the camera
-  or pick it from your library. It saves as soon as you choose it, and you can
-  replace or remove it there too. The field also says when the next photo is due
-  on your weigh-in schedule.
-
   From 5pm the home screen shows the debrief card, and a tap saves straight into
   that day's entry. Tap the same number again to clear it. The card stays until
-  5am, and after midnight it still rates the previous day. You can also rate any
-  day from the Log tab.
+  5am, and after midnight it still rates the previous day.
+
+**Clear day** removes only these daily fields. A check-in weight on the same day
+stays.
+
+### Check-in (weekly by default)
+
+- **Weight** (lb). The stall check and trend line run on this.
+- **Progress photo.** Take it with the camera or pick it from your library. It
+  saves as soon as you choose it.
+
+The card shows where you stand, for example "Check-in due today", "Checked in Oct 4
+✓ · next Sun Oct 11" or "Check-in overdue". On check-in day (and while overdue)
+the check-in card and the Home **Today** card glow, so you don't miss it.
+**Remove weight** removes only the weight. Both cards write to the same day's
+record without overwriting each other's fields.
 
 ## Layout
 
@@ -59,11 +72,11 @@ The app has five tabs in a bar at the bottom of the screen:
 
 | Tab | What's on it |
 |-----|--------------|
-| **Home** | Greeting, today's line, mood check-in, end-of-day debrief (from 5pm), and a one-line status (verdict, trend weight, next weigh-in). Tap the status to open Progress. |
-| **Log** | The entry form for today or any other date |
-| **Progress** | Stall check, trend chart, summary for your schedule's period, body signals, visual log (progress photos), and streaks |
+| **Home** | Greeting, today's line, mood check-in, end-of-day debrief (from 5pm), a **Today** card (calories and protein toward your targets, plus check-in status; tap it to open Log), and a one-line status (verdict, trend weight, weekly rate). |
+| **Log** | Two cards: **Today's fuel** (daily) and **Check-in** (weight and photo) |
+| **Progress** | Stall check, trend chart, daily fuel summary (last 7 days), check-in summary, body signals, visual log (progress photos), and streaks |
 | **History** | Your logged days, newest first, and **Export CSV** |
-| **Settings** | Weigh-in schedule and goals |
+| **Settings** | Check-in schedule and day, goals (calories, protein, steps), sync, Apple Health import |
 
 Each tab has its own address (`#home`, `#log`, …), so your phone's back gesture
 works. To add a feature later, add a `<section class="view" data-view="name">` to
@@ -144,11 +157,18 @@ Reduce Motion is on. The logo in the top bar is drawn inline in `index.html`, so
 takes the theme colors too. The home-screen app icon can't change, because iOS
 keeps the image saved when you added it.
 
-### Weigh-in schedule
+### Check-in schedule
 
-Under **Settings** (or on the Progress tab) pick **Daily**, **Weekly** or
-**Bi-weekly**. Weight is optional on every entry, so on other days you can still
-log food, steps and the plan. The schedule changes:
+Food is always logged daily. Under **Settings** (or on the Progress tab), pick how
+often you **check in** (weigh in and take a photo): **Daily**, **Weekly** or
+**Bi-weekly**. For weekly and bi-weekly, also pick the **check-in day**, for
+example Sunday.
+
+A check-in up to about 2 days early or late counts for the nearest check-in day,
+and the next one is due on the following check-in day. Sunday leads to next
+Sunday; a late Tuesday leads to this coming Sunday, which puts you back on
+schedule; an early Saturday leads to the Sunday after, not tomorrow. Bi-weekly
+works the same way, a week further out. The schedule also changes:
 
 | | Daily | Weekly | Bi-weekly |
 |---|---|---|---|
@@ -157,16 +177,16 @@ log food, steps and the plan. The schedule changes:
 | Weigh-ins needed before a verdict | 7 | 3 | 3 |
 | History needed to call a plateau | 2 weeks | 4 weeks | 6 weeks |
 | Trend chart shows | 6 weeks | 12 weeks | 16 weeks |
-| Summary covers | Last 7 days | Last 4 weeks | Last 8 weeks |
-| Logging streak counts | days with an entry | weeks with a weigh-in | 2-week blocks with a weigh-in |
+| Check-in summary covers | Last 7 days | Last 4 weeks | Last 8 weeks |
+| Check-in streak counts | days weighed in | weeks with a check-in | 2-week blocks with a check-in |
 
 With fewer weigh-ins, each one has to carry more weight in the trend. The
 smoothing values are chosen so the trend reflects roughly the last 2–4 weeks
 on any schedule. All of these values are in the `SCHEDULES` table near the top
 of `app.js`.
 
-Tap any day in History to edit or delete it. This opens the Log tab with that day loaded. Under **Settings → Goals** you can set a daily
-protein target, which drives the protein streak, and a daily step goal.
+Tap any day in History to edit or delete it. This opens the Log tab with that day loaded in both cards. Under **Settings → Goals** you can set a daily
+**calorie target** (a day counts as on target at or under it), a **protein goal** (on target at or above it), and a step goal.
 
 Until you save your first day, the app shows made-up **example data** so you can
 see how it works. The example data is never saved or exported.
@@ -177,7 +197,7 @@ Everything is stored in your browser's `localStorage`, under these keys:
 
 - `cutcoach.entries`: every logged day, as an object keyed by date (`YYYY-MM-DD`), including the debrief ratings
 - `cutcoach.goals`: your protein and step goals
-- `cutcoach.settings`: your weigh-in schedule
+- `cutcoach.settings`: your check-in schedule and check-in day
 - `cutcoach.moods`: mood check-ins, keyed by date and then time of day
 
 **Progress photos** are too big for `localStorage`, so they're kept in the browser's
@@ -331,9 +351,9 @@ daily, 6 weeks for weekly, 8 weeks for bi-weekly.
   weigh-in and the start of the window, scaled to a weekly rate.
 - **On plan:** of the days in the window where you answered "Stuck to plan?",
   the share where you said yes.
-- **Days logged** (daily) or **Weigh-ins** (weekly and bi-weekly): how many
-  days have an entry, or how many scheduled weigh-ins you made, out of the
-  number expected.
+- **Food logged:** how many days in the window have food logged (calories,
+  protein, steps or a plan answer).
+- **Check-ins:** how many scheduled weigh-ins you made, out of the number expected.
 
 ### 3. The verdict
 
@@ -343,7 +363,7 @@ The rules are checked in this order. The first one that matches wins:
 |---|-----------|---------|-------------------|
 | 1 | Fewer weigh-ins than the schedule needs (7 daily, 3 otherwise) | **Getting started** | Not enough data for a trend yet. |
 | 2 | Trend is falling by at least 0.2 lb/wk | **On track**, or **Normal fluctuation** if today's weigh-in is higher than the last one | You're losing. A scale jump is noise, so don't change anything. |
-| 3 | On plan for less than 75% of answered days, **or** under 70% of expected logging (e.g. fewer than 10 of 14 days, or 4 of 6 weekly weigh-ins) | **Consistency slipping** | The stall comes from the plan not being followed, not from the plan failing. Fix the habit before cutting calories. |
+| 3 | On plan for less than 75% of answered days, **or** food logged on under 70% of days, **or** under 70% of scheduled check-ins (e.g. 4 of 6 weekly) | **Consistency slipping** | The stall comes from the plan not being followed, not from the plan failing. Fix the habit before cutting calories. |
 | 4 | You've been consistent and have enough weigh-in history (2, 4 or 6 weeks by schedule) | **True plateau** | Your body has adapted. Make one small change: slightly fewer calories, more steps, or a 1–2 week diet break. |
 | 5 | Anything else | **Too early to call** | Flat, but not for long enough to be a plateau yet. |
 
@@ -358,14 +378,18 @@ at least **25 percentage points** higher than your weekend rate. Then it shows a
 "Weekend pattern" note, and the Consistency advice changes to "plan your
 weekends ahead of time".
 
-## Streaks and summary
+## Streaks and summaries
 
-- **Streaks** count back from today, or from yesterday if you haven't logged
-  today yet. There are three:
-  - **Logging:** days with an entry on the daily schedule. On weekly and
-    bi-weekly, it counts weeks with a weigh-in instead.
-  - **On plan:** days you answered yes to "Stuck to plan?".
+- **Streaks** count back from today, or from yesterday if today doesn't count
+  yet (for example, food hasn't been imported tonight). There are five:
+  - **Food logged:** days with food logged.
+  - **Calorie target:** days at or under your calorie target.
   - **Protein goal:** days at or above your protein goal.
-- **Summary** covers the period for your schedule. It shows the trend change,
-  weigh-ins, average weight, days on plan, days logged, and your average
-  protein, steps and calories.
+  - **On plan:** days you answered yes to "Stuck to plan?".
+  - **Check-ins on schedule:** weeks (or 2-week blocks) with a check-in. On the
+    daily schedule, it counts days weighed in.
+- **Daily fuel · last 7 days:** average calories and protein against your targets,
+  days on calorie target, days you hit your protein goal, average steps, days on
+  plan, and days with food logged.
+- **Check-ins:** over your schedule's period, the trend change, check-ins made,
+  average weight, and photos taken.
