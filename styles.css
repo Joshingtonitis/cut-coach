@@ -198,6 +198,12 @@ a{color:inherit}
 .status-next{font-size:12px;color:var(--muted)}
 .status-go{color:var(--accent);font-size:18px}
 
+/* "New version ready" bar, pinned to the top */
+.update-bar{position:fixed;left:50%;transform:translateX(-50%);top:max(10px,env(safe-area-inset-top));z-index:40;
+  width:min(calc(100% - 24px),520px);font:inherit;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:12px 14px;border-radius:var(--r);cursor:pointer;color:var(--on-accent);background:var(--accent);border:0;
+  box-shadow:0 0 0 1px rgba(var(--a1),.5),0 10px 30px -8px rgba(var(--a1),.8)}
+
 /* ---------- Tab bar ---------- */
 .tabbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:20;
   width:min(calc(100% - 24px),520px);height:var(--tabbar);display:grid;grid-template-columns:repeat(5,1fr);
