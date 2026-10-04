@@ -166,6 +166,30 @@ a{color:inherit}
 .rate-scale button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);box-shadow:0 0 16px -2px rgba(var(--a1),.7)}
 .rate-ends{display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
 
+/* Calories / protein progress toward today's targets (Home "Today" card + Log form) */
+.fuel{display:flex;flex-direction:column;gap:12px}
+.fuel-row{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:baseline}
+.fuel-name{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.fuel-num{text-align:right;font-size:14px}
+.fuel-num.hit{color:var(--good)} .fuel-num.over{color:var(--warn)}
+.fuel-bar{grid-column:1/-1;position:relative;height:6px;background:var(--sunk);border:1px solid var(--line);border-radius:1px;overflow:hidden}
+.fuel-bar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,rgb(var(--a2)),rgb(var(--a1)));box-shadow:0 0 10px rgba(var(--a1),.6);transition:width .4s}
+.fuel-bar.hit i{background:var(--good);box-shadow:0 0 10px var(--good)}
+.fuel-bar.over i{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+/* Home "Today" card */
+.today{text-decoration:none;color:inherit;transition:border-color .2s}
+.today:hover{border-color:rgba(var(--a1),.5)}
+.today-ci{font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--muted);padding-top:12px;border-top:1px dashed var(--line)}
+.today-ci.done{color:var(--good)} .today-ci.due,.today-ci.overdue{color:var(--accent);font-weight:700}
+/* Check-in due / overdue: the card glows so it stands out on check-in day */
+.today.alert,.checkin.alert{border-color:rgba(var(--a1),.65);box-shadow:0 0 0 1px rgba(var(--a1),.25),0 0 30px -8px rgba(var(--a1),.7)}
+.ci-status{font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;padding:10px 12px;border-radius:2px;background:var(--sunk);border:1px solid var(--line);color:var(--muted)}
+.ci-status.done{color:var(--good);border-color:var(--good-soft)}
+.ci-status.due,.ci-status.overdue{color:var(--accent);border-color:rgba(var(--a1),.45);font-weight:700}
+/* Check-in day picker */
+.seg.days button{font-family:var(--mono);padding:9px 0}
+.seg.days button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);box-shadow:0 0 14px -4px rgba(var(--a1),.8)}
+
 /* Home status readout: links to Progress */
 .status{display:flex;align-items:center;gap:12px;padding:14px 16px;text-decoration:none;transition:border-color .2s}
 .status:hover{border-color:rgba(var(--a1),.5)}
@@ -199,7 +223,7 @@ a{color:inherit}
 .verdict .why{color:var(--muted)}
 .verdict .do{font-weight:600}
 .verdict.v-good{box-shadow:inset 3px 0 0 var(--good)} .verdict.v-warn{box-shadow:inset 3px 0 0 var(--warn)} .verdict.v-bad{box-shadow:inset 3px 0 0 var(--bad)} .verdict.v-info{box-shadow:inset 3px 0 0 var(--info)}
-.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:4px}
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:4px}
 .fact{background:var(--sunk);border:1px solid var(--line);border-radius:2px;padding:9px 10px;min-width:0}
 .fact .num{font-size:18px;line-height:1.2}
 .fact .lbl,.streak .lbl{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
@@ -304,7 +328,10 @@ label.btn{display:inline-block;cursor:pointer}
 .hi-steps code{font-family:var(--mono);font-size:12px;color:var(--accent)}
 
 /* Streaks + summary */
-.streaks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+/* 5 streak tiles: 3 on the first row, 2 wider ones on the second. */
+.streaks{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.streaks .streak{grid-column:span 2}
+.streaks .streak:nth-child(n+4){grid-column:span 3}
 .streak{padding:14px 12px;min-width:0}
 .streak .num{font-size:30px;line-height:1;color:var(--accent);margin-bottom:6px;text-shadow:0 0 16px rgba(var(--a1),.5)}
 .streak .num small{font-size:13px;color:var(--muted);margin-left:2px;text-shadow:none}
