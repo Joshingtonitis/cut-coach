@@ -25,7 +25,7 @@ let ratings={hunger:null,energy:null,sleep:null}; // debrief ratings currently i
 /* ---------- storage (localStorage) ---------- */
 const KEY_ENTRIES='cutcoach.entries';   // all logged days, keyed by date
 const KEY_GOALS='cutcoach.goals';       // protein and step goals
-const KEY_SETTINGS='cutcoach.settings'; // weigh-in schedule
+const KEY_SETTINGS='cutcoach.settings'; // check-in schedule + check-in day
 const KEY_MOODS='cutcoach.moods';       // mood check-ins, keyed by date then time of day
 // localStorage can be missing or throw (private windows, blocked site data, full quota),
 // so every access goes through these wrappers. canStore is false when it can't be used.
@@ -40,7 +40,7 @@ function storageWorks(){
   try{const k='cutcoach.test';localStorage.setItem(k,'1');localStorage.removeItem(k);return true;}catch(e){return false;}
 }
 
-/* ---------- weigh-in schedules ---------- */
+/* ---------- check-in schedules ---------- */
 // Everything that depends on how often you weigh in lives here.
 //  every:    days between scheduled weigh-ins
 //  alpha:    how hard each weigh-in pulls the trend line (see series()). Fewer weigh-ins
@@ -515,7 +515,7 @@ $('ciDel').addEventListener('click',()=>{
   saveDay(date,{weight:null}); loadCheckin(date); $('ciMsg').textContent='Weight removed.';
 });
 
-/* ---------- settings: goals + weigh-in schedule ---------- */
+/* ---------- settings: goals + check-in schedule ---------- */
 function fillGoals(){$('gCal').value=goals.calories??'';$('gProt').value=goals.protein??'';$('gSteps').value=goals.steps??'';}
 $('goalSave').addEventListener('click',()=>{
   goals={calories:numOrNull('gCal'),protein:numOrNull('gProt'),steps:numOrNull('gSteps')}; synced.touch('p:goals');
