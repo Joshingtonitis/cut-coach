@@ -21,6 +21,7 @@ screenshots of visual changes.
 | `sync.js` | Optional Supabase sync engine (`window.createSync(bridge)`) |
 | `config.js` | Supabase URL and publishable key (public by design, protected by row-level security) |
 | `supabase/setup.sql` | Database setup: `records` table, RLS policies, private `photos` bucket |
+| `supabase/health-import.sql` | Apple Health import: `ingest_keys` (hashed keys) + `ingest_nutrition()` security-definer function that merges calories/protein into `e:date` records |
 | `quotes.js` | Daily home-screen lines (`window.CUT_QUOTES`) |
 | `README.md` | User-facing docs: how features and the stall check work. Keep it in sync with changes |
 
@@ -48,6 +49,7 @@ screenshots of visual changes.
   labels (`.kicker`), sharp 2–3px radii, and glows from the accent variables. Keep it
   phone-first (390px wide), with no horizontal overflow, and respect
   `prefers-reduced-motion`.
+- **Apple Health import:** MyFitnessPal → Apple Health → iOS Shortcut → `ingest_nutrition` RPC → `records`. The UI is in Settings; the key helpers are in `sync.js`. SQL changes can be tested against the local Postgres 16 install (`/usr/lib/postgresql/16/bin`) with stub `auth`/`storage` schemas.
 - External scripts load only from cdn.jsdelivr.net (supabase-js) and Google Fonts.
 
 ## Testing before you push

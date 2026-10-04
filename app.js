@@ -777,7 +777,55 @@ function renderSync(){
   dot.classList.toggle('syncing',st.state==='syncing'); dot.classList.toggle('sync-err',st.state==='error');
   dot.title=st.state==='error'?'Sync problem':st.state==='syncing'?'Syncing':on?'Synced':'Online';
 }
-if(sync) sync.onChange(renderSync);
+if(sync) sync.onChange(()=>{renderSync();renderHealthImport();});
+// Settings → Apple Health import. Needs sync sign-in, because the Shortcut writes to the
+// same database. Checks once per signed-in account whether an import key already exists.
+let hiInfo={email:null,created:null,checking:false};
+function renderHealthImport(){
+  const st=sync?sync.status():{state:'unconfigured'}, btn=$('hiBtn');
+  if(!st.email){
+    $('hiStatus').textContent='Sign in under Sync above first. The Shortcut sends your totals to the same database.';
+    btn.disabled=true; btn.textContent='Create import key'; return;
+  }
+  if(hiInfo.email!==st.email&&!hiInfo.checking){
+    hiInfo={email:null,created:null,checking:true};
+    $('hiStatus').textContent='Checking…';
+    sync.importKeyCreated()
+      .then(c=>{hiInfo={email:st.email,created:c,checking:false};renderHealthImport();})
+      .catch(e=>{hiInfo={email:st.email,created:null,checking:false};$('hiMsg').className='msg err';
+        $('hiMsg').textContent=/ingest_keys/.test(e.message||'')?'Run supabase/health-import.sql in Supabase first (see README).':'Couldn\'t check: '+e.message;renderHealthImport();});
+    return;
+  }
+  if(hiInfo.checking) return;
+  btn.disabled=false;
+  btn.textContent=hiInfo.created?'Reset import key':'Create import key';
+  $('hiStatus').textContent=hiInfo.created
+    ?'Connected. Key created '+new Date(hiInfo.created).toLocaleDateString(undefined,{month:'short',day:'numeric'})+'. Your Shortcut sends calories and protein, and they show up in that day\'s log.'
+    :'Not connected yet. Create a key, then build the Shortcut using the steps that appear.';
+}
+$('hiBtn').addEventListener('click',async()=>{
+  if(hiInfo.created&&!confirm('Make a new import key? The old one stops working, so you\'ll need to paste the new key into your Shortcut.')) return;
+  const msg=$('hiMsg'); msg.className='msg'; msg.textContent='Creating key…';
+  try{
+    const key=await sync.newImportKey();
+    $('hiKey').textContent=key;
+    $('hiUrl').textContent=sync.config.url.replace(/\/+$/,'')+'/rest/v1/rpc/ingest_nutrition';
+    $('hiApikey').textContent=sync.config.key;
+    $('hiSetup').hidden=false; msg.textContent='';
+    hiInfo={...hiInfo,created:new Date().toISOString()}; renderHealthImport();
+  }catch(e){
+    msg.className='msg err';
+    msg.textContent=/ingest_keys/.test(e.message||'')?'Run supabase/health-import.sql in Supabase first (see README).':'Couldn\'t create the key: '+e.message;
+  }
+});
+for(const b of document.querySelectorAll('[data-copy]')){
+  b.addEventListener('click',async()=>{
+    const text=$(b.dataset.copy).textContent;
+    try{await navigator.clipboard.writeText(text);}
+    catch(e){const r=document.createRange();r.selectNodeContents($(b.dataset.copy));const sel=getSelection();sel.removeAllRanges();sel.addRange(r);document.execCommand('copy');}
+    const old=b.textContent; b.textContent='Copied ✓'; setTimeout(()=>{b.textContent=old;},1500);
+  });
+}
 async function syncAuth(kind){
   const email=$('sEmail').value.trim(), pass=$('sPass').value;
   const msg=$('syncMsg'); msg.className='msg';
@@ -810,6 +858,7 @@ showQuote();
 route();
 playIntro();
 renderSync();
+renderHealthImport();
 loadPhotos().then(()=>{if(sync)sync.init();});
 
 // If the app is open in two tabs, pick up changes saved in the other one.

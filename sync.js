@@ -126,9 +126,25 @@ window.createSync=function(app){
     if(error) return error.message;
     return data&&data.session?'':'Account created. Check your email to confirm it, then sign in here.';
   }
+  // Apple Health import key (see supabase/health-import.sql). The key itself is only ever
+  // shown once; the server keeps just its SHA-256 hash.
+  async function importKeyCreated(){
+    const {data,error}=await client.from('ingest_keys').select('created_at').limit(1);
+    if(error) throw error;
+    return data&&data[0]?data[0].created_at:null;
+  }
+  async function newImportKey(){
+    const hex=bytes=>[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
+    const key=hex(crypto.getRandomValues(new Uint8Array(24)));
+    const hash=hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key)));
+    const {error}=await client.from('ingest_keys').upsert({user_id:user.id,key_hash:hash,created_at:new Date().toISOString()},{onConflict:'user_id'});
+    if(error) throw error;
+    return key;
+  }
   async function signOut(){ await client.auth.signOut(); user=null; setState('signedout'); }
 
-  return {enabled,init,touch,remove,syncNow:()=>syncNow(),signIn,signUp,signOut,
+  return {enabled,init,touch,remove,syncNow:()=>syncNow(),signIn,signUp,signOut,importKeyCreated,newImportKey,
+    config:{url:cfg.supabaseUrl,key:cfg.supabaseAnonKey},
     onChange:f=>listeners.push(f),
     status:()=>({state,error:lastError,email:user?user.email:'',lastSync})};
 };

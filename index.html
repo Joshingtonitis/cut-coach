@@ -251,6 +251,31 @@
         <p class="msg" id="syncMsg" role="status"></p>
       </div>
     </div>
+    <!-- Apple Health import: an iPhone Shortcut sends today's calories + protein (from
+         MyFitnessPal via Apple Health) to the database. See README → Apple Health import. -->
+    <div class="block">
+      <h3 class="kicker">Apple Health import</h3>
+      <div class="panel hud">
+        <p class="msg" id="hiStatus"></p>
+        <div class="actions"><button class="btn small" type="button" id="hiBtn" disabled>Create import key</button></div>
+        <div class="hi-setup" id="hiSetup" hidden>
+          <p class="msg"><b>Copy these into your Shortcut now.</b> The key is only shown once. If you lose it, reset it and update the Shortcut.</p>
+          <div class="copy-row"><span class="lbltxt">Import key</span><code id="hiKey"></code><button class="btn ghost small" type="button" data-copy="hiKey">Copy</button></div>
+          <div class="copy-row"><span class="lbltxt">URL</span><code id="hiUrl"></code><button class="btn ghost small" type="button" data-copy="hiUrl">Copy</button></div>
+          <div class="copy-row"><span class="lbltxt">apikey header</span><code id="hiApikey"></code><button class="btn ghost small" type="button" data-copy="hiApikey">Copy</button></div>
+          <ol class="hi-steps">
+            <li>Open <b>Shortcuts</b> → <b>+</b>. Name it <b>Pinche Güey import</b>.</li>
+            <li>Add <b>Find Health Samples</b>: Type <b>Dietary Energy</b>, Start Date <b>is today</b>. Add <b>Calculate Statistics</b> → <b>Sum</b>. Add <b>Set Variable</b> → name it <b>Calories</b>.</li>
+            <li>Do the same with Type <b>Protein</b> → variable <b>Protein</b>.</li>
+            <li>Add <b>Format Date</b>: <b>Current Date</b>, format <b>Custom</b> → <code>yyyy-MM-dd</code>.</li>
+            <li>Add <b>Get Contents of URL</b>: paste the <b>URL</b>. Method <b>POST</b>. Add header <b>apikey</b> = the apikey above. Request Body <b>JSON</b> with: <code>p_key</code> (Text) = import key, <code>p_date</code> (Text) = Formatted Date, <code>p_calories</code> (Number) = Calories, <code>p_protein</code> (Number) = Protein.</li>
+            <li>Tap ▶ to run it. You should see <code>"ok": true</code> with today's totals.</li>
+            <li><b>Automation</b> tab → <b>+</b> → <b>Time of Day</b> → 9:00 PM, Daily → <b>Run Immediately</b> → pick the shortcut. Add a second one at 11:45 PM to catch late meals.</li>
+          </ol>
+        </div>
+        <p class="msg" id="hiMsg" role="status"></p>
+      </div>
+    </div>
   </section>
 </div>
 

@@ -25,6 +25,7 @@ npx serve .        # or: python3 -m http.server
 | `sync.js`    | Optional cloud sync through Supabase (off until `config.js` is filled in) |
 | `config.js`  | Your Supabase project URL and public anon key. Empty means no sync |
 | `supabase/setup.sql` | One-time database setup for sync: table, privacy rules, photo bucket |
+| `supabase/health-import.sql` | Adds the Apple Health import: import keys and the `ingest_nutrition` function |
 | `CLAUDE.md`  | Notes that new Claude sessions read automatically: structure, conventions, testing, workflow |
 | `quotes.js`  | The list of daily lines shown on the home screen. Add your own here |
 | `icons/`     | App icon: `icon.svg` (source), `favicon.svg`, and PNGs for the home screen |
@@ -252,6 +253,44 @@ syncing it.
 The anon key in `config.js` is meant to be public. The row-level security rules
 in `setup.sql` only let a signed-in account read and write its own rows and
 photos.
+
+## Apple Health import (calories and protein from MyFitnessPal)
+
+MyFitnessPal has no public API, so the numbers take a longer route:
+
+**MyFitnessPal → Apple Health → iPhone Shortcut → database → app**
+
+1. MyFitnessPal writes your food to Apple Health. Turn this on in MyFitnessPal, and
+   check that **Settings → Privacy & Security → Health → MyFitnessPal** allows
+   writing **Dietary Energy** and **Protein**.
+2. A Shortcut adds up today's Dietary Energy and Protein from Health and sends the
+   totals to the `ingest_nutrition` database function, along with your import key.
+3. The function merges calories and protein into that day's log. Weight, plan,
+   debrief and everything else stay as they are. Your devices pick the change up on
+   their next sync.
+
+### Setup
+
+1. **Database:** paste `supabase/health-import.sql` into Supabase's SQL Editor and
+   run it once. Sync (`setup.sql`) must already be set up.
+2. **Import key:** in the app, go to **Settings → Apple Health import → Create
+   import key**. The key, the URL and the apikey appear with Copy buttons. The key
+   is shown only once, because the server stores just its SHA-256 hash. **Reset
+   import key** replaces it, and the old key stops working right away.
+3. **Shortcut:** follow the 7 steps shown under the key. In short:
+   - Find Health Samples (Dietary Energy, today) → Calculate Statistics (Sum) → variable `Calories`
+   - the same for Protein → variable `Protein`
+   - Format Date (`yyyy-MM-dd`)
+   - Get Contents of URL: POST to the URL, with header `apikey`, and a JSON body of
+     `p_key`, `p_date`, `p_calories`, `p_protein`
+4. **Schedule it:** in the Shortcuts **Automation** tab, add a **Time of Day**
+   automation (for example 9:00 PM and 11:45 PM daily) set to **Run Immediately**.
+
+Each run sends the whole day's totals, so running it more than once is harmless:
+the latest run wins. A total of 0 (nothing logged yet) leaves the field unchanged.
+Imported values replace anything typed by hand into Calories or Protein for that
+day. The import key only allows writing calories and protein to days in your own
+log. It can't read anything.
 
 ## Working on the code from more than one device
 
