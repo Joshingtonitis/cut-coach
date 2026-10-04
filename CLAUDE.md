@@ -17,7 +17,7 @@ screenshots of visual changes.
 |------|------|
 | `index.html` | All markup: intro overlay, 5 tab views (`section.view[data-view]`), viewer, tab bar |
 | `styles.css` | Sci-fi HUD theme. Colors are CSS variables; `:root[data-mood=…]` blocks re-theme everything |
-| `app.js` | The whole app in one IIFE: storage, schedules, stall-check analysis, rendering, form, debrief, photos, moods, intro, router, sync bridge, boot |
+| `app.js` | The whole app in one IIFE: storage, schedules, stall-check analysis, cut plan (finish line, calorie coach), check-in review, rendering, form, debrief, photos, moods, intro, router, sync bridge, boot |
 | `sync.js` | Optional Supabase sync engine (`window.createSync(bridge)`) |
 | `config.js` | Supabase URL and publishable key (public by design, protected by row-level security) |
 | `supabase/setup.sql` | Database setup: `records` table, RLS policies, private `photos` bucket |
@@ -41,7 +41,16 @@ screenshots of visual changes.
   cards write disjoint fields into the same `e:date` record via `saveDay()`.
   `checkinStatus()` / `checkinText()` compute due / done / overdue.
 - **Check-in schedules:** everything schedule-dependent is in the `SCHEDULES` table
-  (daily / weekly / bi-weekly). Goals are `{calories, protein, steps}`.
+  (daily / weekly / bi-weekly). Goals are `{calories, protein, steps, goalWeight, pace, calSetOn}`;
+  `goalWeight` + `pace` (lb/week) are the cut plan, and `calSetOn` is the day the calorie
+  target last changed (the coach waits ~a check-in after it). All of it syncs as `p:goals`.
+- **Cut plan:** `finishLine(a)` (start→goal progress, pace from `fitLine()` over
+  `S.coach` days, ETAs) and `coachEstimate()` (maintenance = avg intake − weight slope ×
+  3500; target = maintenance − pace × 500; floor 1500, steps ≤200, cooldown) feed the
+  Home mission card and the Progress panels. `buildReview(date)` / `renderReview()`
+  make the check-in review; `openReview()` pops it (`#reviewSheet`, z-index 70, below
+  the photo viewer) after a weekly/bi-weekly check-in is saved. README → *Cut plan*
+  documents the rules; keep it in sync.
 - **Sync:** data is stored as records (`e:date`, `m:date`, `p:goals`, `p:settings`,
   `f:date`), and the newer change wins. **Any new kind of user data must be added to
   the bridge's `localRecords()` / `apply()`, and every local change must call

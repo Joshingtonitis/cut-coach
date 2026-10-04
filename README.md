@@ -5,6 +5,9 @@ interface from a few decades ahead. You log your weight and a few
 habits each day. It shows your **trend weight** and checks whether you're on track.
 When the scale stops moving, it tells you **why**: you're still losing and the
 scale is just noisy, your consistency slipped, or you've hit a real plateau.
+Set a goal weight and it also shows your **finish line**, works out your real
+maintenance calories from your own logs (the **calorie coach**), and gives you a
+**review** after each check-in.
 
 ## Running it
 
@@ -21,7 +24,7 @@ npx serve .        # or: python3 -m http.server
 |--------------|---------------------------------------------------------------------|
 | `index.html` | The five tabs (Home, Log, Progress, History, Settings) and the bottom tab bar |
 | `styles.css` | All styling: the sci-fi HUD theme built on CSS variables, the three mood themes, and the intro animation |
-| `app.js`     | Data storage, check-in schedules, the stall-check analysis, end-of-day debrief and body signals, rendering, CSV export, the greeting, intro, mood check-ins and tab navigation |
+| `app.js`     | Data storage, check-in schedules, the stall-check analysis, the cut plan (finish line and calorie coach), the check-in review, end-of-day debrief and body signals, rendering, CSV export, the greeting, intro, mood check-ins and tab navigation |
 | `sync.js`    | Optional cloud sync through Supabase (off until `config.js` is filled in) |
 | `config.js`  | Your Supabase project URL and public anon key. Empty means no sync |
 | `supabase/setup.sql` | One-time database setup for sync: table, privacy rules, photo bucket |
@@ -73,11 +76,11 @@ The app has five tabs in a bar at the bottom of the screen:
 
 | Tab | What's on it |
 |-----|--------------|
-| **Home** | Greeting, today's line, mood check-in, end-of-day debrief (from 5pm), a **Today** card (calories and protein toward your targets, plus check-in status; tap it to open Log), and a one-line status (verdict, trend weight, weekly rate). |
+| **Home** | Greeting, today's line, mood check-in, end-of-day debrief (from 5pm), a **Today** card (calories and protein toward your targets, plus check-in status; tap it to open Log), and a **mission** card (verdict, trend weight, a progress bar to your goal weight, and your ETA). |
 | **Log** | Two cards: **Today's fuel** (daily) and **Check-in** (weight and photo) |
-| **Progress** | Stall check, trend chart, daily fuel summary (last 7 days), check-in summary, body signals, visual log (progress photos), and streaks |
+| **Progress** | Stall check, finish line, calorie coach, latest check-in review, trend chart, daily fuel summary (last 7 days), check-in summary, body signals, visual log (progress photos), and streaks |
 | **History** | Your logged days, newest first, and **Export CSV** |
-| **Settings** | Check-in schedule and day, goals (calories, protein, steps), sync, Apple Health import |
+| **Settings** | Check-in schedule and day, cut plan (goal weight and pace), goals (calories, protein, steps), sync, Apple Health import |
 
 Each tab has its own address (`#home`, `#log`, …), so your phone's back gesture
 works. To add a feature later, add a `<section class="view" data-view="name">` to
@@ -180,6 +183,7 @@ works the same way, a week further out. The schedule also changes:
 | Trend chart shows | 6 weeks | 12 weeks | 16 weeks |
 | Check-in summary covers | Last 7 days | Last 4 weeks | Last 8 weeks |
 | Check-in streak counts | days weighed in | weeks with a check-in | 2-week blocks with a check-in |
+| Calorie coach and finish-line pace look back up to | 4 weeks | 6 weeks | 8 weeks |
 
 With fewer weigh-ins, each one has to carry more weight in the trend. The
 smoothing values are chosen so the trend reflects roughly the last 2–4 weeks
@@ -188,16 +192,111 @@ of `app.js`.
 
 Tap any day in History to edit or delete it. This opens the Log tab with that day loaded in both cards. Under **Settings → Goals** you can set a daily
 **calorie target** (a day counts as on target at or under it), a **protein goal** (on target at or above it), and a step goal.
+Once the calorie coach has enough data, it can set the calorie target for you (see *Cut plan* below).
 
 Until you save your first day, the app shows made-up **example data** so you can
 see how it works. The example data is never saved or exported.
+
+## Cut plan: finish line, calorie coach and check-in review
+
+Set this up once under **Settings → Cut plan**:
+
+- **Goal weight** (lb).
+- **Target pace:** 0.5, 1, 1.5 or 2 lb a week. Below the buttons it shows when
+  you'd reach your goal at that pace, and how far under maintenance you'd need
+  to eat (1 lb a week ≈ 500 kcal a day). If the pace is more than 1% of your body
+  weight a week, it warns you that keeping muscle gets harder.
+
+Tap **Save plan**. Like everything else, the plan syncs between devices.
+
+### Finish line (Progress tab and the Home mission card)
+
+- A progress bar from your **start** (your first weigh-in) to your **goal**. **Now**
+  is your current trend weight.
+- **Your pace** comes from a straight line drawn through your weigh-ins from the
+  last 4 weeks (daily schedule), 6 weeks (weekly) or 8 weeks (bi-weekly). The
+  smoothed trend lags a little behind your real weight, so a line gives a fairer
+  read of your speed. It needs 3 weigh-ins: about a week of them on the daily
+  schedule, or your third check-in.
+- **ETA at your pace** and **ETA on plan** show when you'd reach your goal at your
+  actual speed and at your planned speed.
+- **Ahead / on pace / behind:** "on pace" means 85–110% of your planned pace.
+  Losing less than 0.2 lb a week counts as "not dropping yet" (the same cutoff
+  the stall check uses), so there's no ETA until the scale moves.
+
+The Home mission card shows the short version: verdict, trend weight, the
+progress bar, and "X lb down · Y to go · ETA".
+
+### Calorie coach (Progress tab)
+
+Online calculators guess your maintenance calories from your age, height and
+weight, and they're often off by a few hundred. The coach measures yours from
+your own logs instead:
+
+```
+maintenance = average calories eaten + (weight lost per day × 3,500)
+```
+
+Example: you average 2,300 kcal a day and lose 1 lb a week. 1 lb of fat is about
+3,500 kcal, so 500 kcal a day is coming from your body. Maintenance ≈ 2,300 + 500
+= **2,800**. For a 1 lb/week pace, the coach suggests 2,800 − 500 = **2,300 kcal a day**.
+
+- **What it needs:** food logged on at least 70% of days, and 3 or more weigh-ins
+  spread over at least 2 weeks. Until then it shows two progress meters. It uses
+  the longest recent stretch that qualifies (up to 4, 6 or 8 weeks by schedule).
+  Days under 800 kcal are skipped as probably incomplete, and so is today,
+  because it isn't over yet.
+- **Weight change** comes from a straight line through those weigh-ins, so one
+  salty weigh-in barely moves it.
+- **Accuracy** reads "rough", "good" or "solid", depending on how much data there
+  is and how closely your weigh-ins follow the line.
+- **Changing your target:** tap **Change target to …** and it updates your calorie
+  target in Settings. To keep things steady, the coach:
+  - never suggests less than **1,500 kcal** a day (if your pace would need less,
+    it says so and suggests a slower pace);
+  - moves your target by at most **200 kcal** at a time;
+  - ignores differences under 100 kcal;
+  - waits after any change to your target, yours or its own, so the change has time
+    to show on the scale: 5 days on the daily and weekly schedules, 12 on bi-weekly.
+- **Eating over target:** if you've averaged 75+ kcal over your current target, it
+  says so, and shows the pace you'd get by sticking to the target. Sometimes the
+  target is right and the fix is hitting it.
+- If the math comes out below 1,200 or above 6,000 kcal, it says something looks
+  off (usually food logs that don't cover whole days) instead of suggesting a number.
+
+The first weeks of a cut drop extra water weight, so early estimates can run a
+little high. They settle as you log more. When the stall check calls a **True
+plateau**, its advice includes the coach's number.
+
+### Check-in review
+
+When you save a weekly or bi-weekly check-in for today or yesterday, a review pops
+up. It covers the days since your last check-in:
+
+- **Weight:** this check-in, the change since last time, the trend change, and
+  your total since your first weigh-in.
+- **Focus for next week:** one or two specific things, picked from your weakest
+  spots: missed food logs, days over your calorie target (and whether they were
+  mostly weekends), missed protein, days off plan, or poor sleep. If everything
+  went well, it tells you to keep going.
+- **Calorie coach:** your maintenance estimate, with a button to apply a new target
+  if it suggests one.
+- **Finish line:** pounds to go, your ETA, and whether you're ahead or behind.
+- **Food:** days logged, average calories and protein against your targets, days
+  on target, and days on plan.
+- **Photos:** last check-in's photo next to this one, with the weight change. Tap
+  one to see it full screen.
+
+The latest review also stays on the Progress tab, minus the coach and finish line,
+which have their own panels there. The daily schedule doesn't pop up a review, but
+the Progress tab shows one covering your last 7 days.
 
 ## Where your data lives
 
 Everything is stored in your browser's `localStorage`, under these keys:
 
 - `cutcoach.entries`: every logged day, as an object keyed by date (`YYYY-MM-DD`), including the debrief ratings
-- `cutcoach.goals`: your protein and step goals
+- `cutcoach.goals`: your daily goals (calories, protein, steps) and cut plan (goal weight, pace, and the day your calorie target last changed)
 - `cutcoach.settings`: your check-in schedule and check-in day
 - `cutcoach.moods`: mood check-ins, keyed by date and then time of day
 
@@ -381,7 +480,7 @@ The rules are checked in this order. The first one that matches wins:
 | 1 | Fewer weigh-ins than the schedule needs (7 daily, 3 otherwise) | **Getting started** | Not enough data for a trend yet. |
 | 2 | Trend is falling by at least 0.2 lb/wk | **On track**, or **Normal fluctuation** if today's weigh-in is higher than the last one | You're losing. A scale jump is noise, so don't change anything. |
 | 3 | On plan for less than 75% of answered days, **or** food logged on under 70% of days, **or** under 70% of scheduled check-ins (e.g. 4 of 6 weekly) | **Consistency slipping** | The stall comes from the plan not being followed, not from the plan failing. Fix the habit before cutting calories. |
-| 4 | You've been consistent and have enough weigh-in history (2, 4 or 6 weeks by schedule) | **True plateau** | Your body has adapted. Make one small change: slightly fewer calories, more steps, or a 1–2 week diet break. |
+| 4 | You've been consistent and have enough weigh-in history (2, 4 or 6 weeks by schedule) | **True plateau** | Your body has adapted. Make one small change: slightly fewer calories, more steps, or a 1–2 week diet break. If the calorie coach suggests a lower target, its number is added here. |
 | 5 | Anything else | **Too early to call** | Flat, but not for long enough to be a plateau yet. |
 
 The order matters. Consistency is checked **before** plateau, so the app never

@@ -13,11 +13,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
-<link rel="stylesheet" href="styles.css?v=20261004200316">
-<script src="config.js?v=20261004200316" defer></script>
-<script src="quotes.js?v=20261004200316" defer></script>
-<script src="sync.js?v=20261004200316" defer></script>
-<script src="app.js?v=20261004200316" defer></script>
+<link rel="stylesheet" href="styles.css?v=20261004210412">
+<script src="config.js?v=20261004210412" defer></script>
+<script src="quotes.js?v=20261004210412" defer></script>
+<script src="sync.js?v=20261004210412" defer></script>
+<script src="app.js?v=20261004210412" defer></script>
 </head>
 <body>
 <!-- INTRO: plays every time the app opens. It's in the HTML (not added by JS) so it covers
@@ -94,10 +94,11 @@
       <div class="today-ci" id="todayCi"></div>
     </a>
 
-    <a class="status hud" href="#progress">
-      <span class="tag" id="hsTag">–</span>
-      <span class="status-main"><span class="status-trend" id="hsTrend">–</span><span class="status-next" id="hsNext"></span></span>
-      <span class="status-go" aria-hidden="true">→</span>
+    <!-- Mission: stall-check verdict, trend weight, and progress from start weight to goal. -->
+    <a class="status hud" id="missionCard" href="#progress">
+      <span class="mission-top"><span class="tag" id="hsTag">–</span><span class="status-trend" id="hsTrend">–</span><span class="status-go" aria-hidden="true">→</span></span>
+      <span class="track" id="msTrack" hidden><i id="msFill"></i></span>
+      <span class="status-next" id="hsNext"></span>
     </a>
   </section>
 
@@ -183,6 +184,21 @@
         </div>
         <p class="pattern" id="pattern" hidden></p>
       </div>
+    </div>
+
+    <div class="block">
+      <h3 class="kicker">Finish line</h3>
+      <div class="panel hud" id="finishPanel"></div>
+    </div>
+
+    <div class="block">
+      <h3 class="kicker">Calorie coach</h3>
+      <div class="panel hud" id="coachPanel"></div>
+    </div>
+
+    <div class="block">
+      <h3 class="kicker">Latest check-in review</h3>
+      <div class="panel hud" id="reviewPanel"></div>
     </div>
 
     <div class="block">
@@ -281,12 +297,31 @@
       </div>
     </div>
     <div class="block">
+      <h3 class="kicker">Cut plan</h3>
+      <div class="panel hud">
+        <div class="goals">
+          <div class="field"><label for="gWeight">Goal weight (lb)</label><input id="gWeight" type="number" inputmode="decimal" step="0.5" min="50" max="700" placeholder="e.g. 175"></div>
+          <div class="field full"><span class="lbltxt" id="paceLbl">Target pace · lb per week</span>
+            <div class="seg pace" role="group" aria-labelledby="paceLbl">
+              <button type="button" data-pace="0.5" aria-pressed="false">0.5</button>
+              <button type="button" data-pace="1" aria-pressed="false">1</button>
+              <button type="button" data-pace="1.5" aria-pressed="false">1.5</button>
+              <button type="button" data-pace="2" aria-pressed="false">2</button>
+            </div>
+          </div>
+          <p class="msg plan-summary" id="planSummary"></p>
+          <div class="actions"><button class="btn small" type="button" id="planSave">Save plan</button><span class="msg" id="planMsg" role="status"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="block">
       <h3 class="kicker">Goals</h3>
       <div class="panel hud">
         <div class="goals">
           <div class="field"><label for="gCal">Daily calorie target</label><input id="gCal" type="number" inputmode="numeric" min="0" step="50" placeholder="e.g. 2200"></div>
           <div class="field"><label for="gProt">Daily protein goal (g)</label><input id="gProt" type="number" inputmode="numeric" min="0" placeholder="e.g. 160"></div>
           <div class="field"><label for="gSteps">Daily step goal</label><input id="gSteps" type="number" inputmode="numeric" min="0" step="500" placeholder="e.g. 8000"></div>
+          <p class="msg plan-summary" id="coachHint"></p>
           <div class="actions"><button class="btn small" type="button" id="goalSave">Save goals</button><span class="msg" id="goalMsg" role="status"></span></div>
         </div>
       </div>
@@ -336,6 +371,15 @@
 
 <!-- Glowing ring for mood changes on browsers without View Transitions (see styles.css) -->
 <div class="lightwave" id="lightwave" hidden aria-hidden="true"><i class="lw-ring"></i></div>
+
+<!-- Check-in review: pops up after you save a check-in (see "check-in review" in app.js). -->
+<div class="review-sheet" id="reviewSheet" hidden role="dialog" aria-modal="true" aria-labelledby="rvHead">
+  <div class="review-box panel hud">
+    <div class="card-head"><span class="kicker" id="rvHead">Check-in complete</span><button type="button" class="rv-close" id="rvClose" aria-label="Close review">✕</button></div>
+    <div class="rv-body" id="rvBody"></div>
+    <button type="button" class="btn" id="rvDone">Done</button>
+  </div>
+</div>
 
 <!-- Full-screen photo viewer -->
 <div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-label="Progress photo">
