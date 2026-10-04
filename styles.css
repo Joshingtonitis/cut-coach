@@ -188,15 +188,40 @@ a{color:inherit}
 .ci-status.due,.ci-status.overdue{color:var(--accent);border-color:rgba(var(--a1),.45);font-weight:700}
 /* Check-in day picker */
 .seg.days button{font-family:var(--mono);padding:9px 0}
-.seg.days button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);box-shadow:0 0 14px -4px rgba(var(--a1),.8)}
+.seg.days button[aria-pressed="true"],.seg.pace button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);box-shadow:0 0 14px -4px rgba(var(--a1),.8)}
+.seg.pace button{font-family:var(--mono)}
 
-/* Home status readout: links to Progress */
-.status{display:flex;align-items:center;gap:12px;padding:14px 16px;text-decoration:none;transition:border-color .2s}
+/* Home mission card: verdict tag + trend weight, the start→goal track, then the ETA line.
+   Links to Progress. */
+.status{display:flex;flex-direction:column;gap:10px;padding:14px 16px;text-decoration:none;transition:border-color .2s}
 .status:hover{border-color:rgba(var(--a1),.5)}
-.status-main{display:flex;flex-direction:column;min-width:0;flex:1}
-.status-trend{font-family:var(--mono);font-size:14px;font-weight:700}
+.mission-top{display:flex;align-items:center;gap:12px}
+.status-trend{flex:1;min-width:0;text-align:right;font-family:var(--mono);font-size:14px;font-weight:700}
 .status-next{font-size:12px;color:var(--muted)}
-.status-go{color:var(--accent);font-size:18px}
+.status-go{color:var(--accent);font-size:18px;line-height:1}
+
+/* Progress track (start weight → goal), with faint ticks at each quarter */
+.track{display:block;position:relative;height:8px;border:1px solid var(--line);border-radius:1px;overflow:hidden;
+  background:repeating-linear-gradient(90deg,transparent 0 calc(25% - 1px),var(--line-strong) calc(25% - 1px) 25%),var(--sunk)}
+.track i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,rgb(var(--a2)),rgb(var(--a1)));box-shadow:0 0 12px rgba(var(--a1),.7);transition:width .5s}
+.track-ends{display:grid;grid-template-columns:repeat(3,1fr);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.track-ends b{display:block;margin-top:2px;font-size:18px;font-weight:600;letter-spacing:0;color:var(--fg);font-variant-numeric:tabular-nums}
+.track-ends span:nth-child(2){text-align:center} .track-ends span:nth-child(2) b{color:var(--accent);text-shadow:0 0 14px rgba(var(--a1),.5)}
+.track-ends span:last-child{text-align:right}
+.track-pct{margin-top:-8px;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:center}
+.pace-state{font-size:14px;font-weight:600;padding:10px 12px;border-radius:2px;background:var(--sunk);border:1px solid var(--line);color:var(--muted)}
+.pace-state.ahead,.pace-state.on,.pace-state.reached{color:var(--good);background:var(--good-soft);border-color:var(--good-soft)}
+.pace-state.behind{color:var(--warn);background:var(--warn-soft);border-color:var(--warn-soft)}
+
+/* Calorie coach */
+.coach-big{display:flex;align-items:baseline;gap:8px;margin-top:-8px}
+.coach-big .num{font-size:40px;line-height:1.05;color:var(--accent);text-shadow:0 0 18px rgba(var(--a1),.5)}
+.coach-unit{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.coach-target{font-size:15px}
+.coach-target b{font-family:var(--mono);font-size:17px;color:var(--accent)}
+.coach-ok{font-size:14px;font-weight:600;color:var(--good)}
+.coach-note{font-size:12.5px;color:var(--muted)}
+.coach-apply{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
 
 /* "New version ready" bar, pinned to the top */
 .update-bar{position:fixed;left:50%;transform:translateX(-50%);top:max(10px,env(safe-area-inset-top));z-index:40;
@@ -323,6 +348,23 @@ label.btn{display:inline-block;cursor:pointer}
 .vw-bar button{font:inherit;font-size:22px;width:44px;height:40px;color:var(--accent);background:var(--sunk);border:1px solid var(--line-strong);border-radius:2px;cursor:pointer}
 .vw-bar button:disabled{opacity:.3;cursor:default}
 
+/* Check-in review: a scrollable sheet over the app (below the photo viewer, so a photo
+   tapped inside the review opens on top of it). Also used for the Progress review panel. */
+html.modal-open{overflow:hidden}
+.review-sheet{position:fixed;inset:0;z-index:70;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+  padding:max(16px,env(safe-area-inset-top)) 12px max(20px,env(safe-area-inset-bottom));background:rgba(0,0,0,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.review-box{max-width:520px;margin:0 auto;background:var(--surface-solid);box-shadow:0 0 50px -16px rgba(var(--a1),.55)}
+.rv-close{flex:none;font:inherit;font-size:16px;width:36px;height:36px;color:var(--fg);background:var(--sunk);border:1px solid var(--line-strong);border-radius:2px;cursor:pointer}
+.rv-body,.rv-part{display:flex;flex-direction:column;gap:12px}
+.rv-when{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.rv-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.rv-stats .fact{padding:9px 8px}
+.fact-sub{margin-top:3px;font-size:11px;line-height:1.3;color:var(--muted)}
+.rv-h{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+.rv-h::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,rgba(var(--a1),.35),transparent)}
+.rv-body .notes,#reviewPanel .notes{padding-top:0;border-top:0}
+.rv-body .notes li,#reviewPanel .notes li{color:var(--fg)}
+
 /* Apple Health import setup */
 .hi-setup{display:flex;flex-direction:column;gap:12px;padding-top:12px;border-top:1px dashed var(--line)}
 .hi-setup .msg b{color:var(--fg)}
@@ -357,6 +399,7 @@ label.btn{display:inline-block;cursor:pointer}
 .pill{font-family:var(--mono);font-size:9.5px;font-weight:700;padding:3px 7px;border-radius:2px;text-transform:uppercase;letter-spacing:.1em}
 .pill.yes{background:var(--good-soft);color:var(--good)} .pill.no{background:var(--bad-soft);color:var(--bad)} .pill.na{background:var(--sunk);color:var(--faint)}
 .goals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.goals .plan-summary{grid-column:1/-1}
 .empty{color:var(--muted);font-size:14px;padding-block:8px}
 
 /* ---------- Theme change sweep ---------- */
@@ -434,4 +477,5 @@ label.btn{display:inline-block;cursor:pointer}
   .intro.run .intro-scan,.intro.run .intro-bar i{animation:none}
   .intro.out{animation:fadeOut .2s forwards}
   @keyframes fadeOut{to{opacity:0}}
+  .track i,.fuel-bar i{transition:none}
 }

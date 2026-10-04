@@ -17,7 +17,9 @@ const plural=(n,w)=>n+' '+w+(n===1?'':'s');
 let mode='loading'; // 'example' | 'mine' | 'memory'
 let mine={};        // date -> entry (real)
 let example={};
-const GOAL_DEFAULTS={protein:null,steps:null,calories:null};
+// goalWeight + pace (lb/week) make up the cut plan; calSetOn is the day the calorie coach's
+// suggestion was last applied (it waits about a week before suggesting another change).
+const GOAL_DEFAULTS={protein:null,steps:null,calories:null,goalWeight:null,pace:1,calSetOn:null};
 const SETTING_DEFAULTS={schedule:'daily',checkinDay:0}; // checkinDay: 0 = Sunday … 6 = Saturday
 let goals={...GOAL_DEFAULTS};
 let settings={...SETTING_DEFAULTS};
@@ -27,7 +29,7 @@ let ratings={hunger:null,energy:null,sleep:null}; // debrief ratings currently i
 
 /* ---------- storage (localStorage) ---------- */
 const KEY_ENTRIES='cutcoach.entries';   // all logged days, keyed by date
-const KEY_GOALS='cutcoach.goals';       // protein and step goals
+const KEY_GOALS='cutcoach.goals';       // daily goals + cut plan (goal weight, pace)
 const KEY_SETTINGS='cutcoach.settings'; // check-in schedule + check-in day
 const KEY_MOODS='cutcoach.moods';       // mood check-ins, keyed by date then time of day
 // localStorage can be missing or throw (private windows, blocked site data, full quota),
@@ -53,10 +55,11 @@ function storageWorks(){
 //  plateau:  days of history needed before a flat trend counts as a true plateau
 //  chart:    days shown on the trend chart
 //  recap:    days covered by the summary
+//  coach:    the longest stretch the calorie coach looks back over
 const SCHEDULES={
-  daily:   {every:1, alpha:0.1,win:14,minPts:7,plateau:14,chart:42, recap:7, winLabel:'2 weeks',recapLabel:'Last 7 days'},
-  weekly:  {every:7, alpha:0.5,win:42,minPts:3,plateau:28,chart:84, recap:28,winLabel:'6 weeks',recapLabel:'Last 4 weeks'},
-  biweekly:{every:14,alpha:0.6,win:56,minPts:3,plateau:42,chart:112,recap:56,winLabel:'8 weeks',recapLabel:'Last 8 weeks'},
+  daily:   {every:1, alpha:0.1,win:14,minPts:7,plateau:14,chart:42, recap:7, coach:28,winLabel:'2 weeks',recapLabel:'Last 7 days'},
+  weekly:  {every:7, alpha:0.5,win:42,minPts:3,plateau:28,chart:84, recap:28,coach:42,winLabel:'6 weeks',recapLabel:'Last 4 weeks'},
+  biweekly:{every:14,alpha:0.6,win:56,minPts:3,plateau:42,chart:112,recap:56,coach:56,winLabel:'8 weeks',recapLabel:'Last 8 weeks'},
 };
 const sched=()=>SCHEDULES[settings.schedule]||SCHEDULES.daily;
 const isDaily=()=>sched().every===1;
@@ -78,7 +81,7 @@ function buildExample(){
 }
 
 const entries=()=>mode==='example'?example:mine;
-const curGoals=()=>mode==='example'?{protein:160,steps:8000,calories:2200}:goals;
+const curGoals=()=>mode==='example'?{...GOAL_DEFAULTS,protein:160,steps:8000,calories:2200,goalWeight:182}:goals;
 // A day "has food" if any daily-fuel field was logged (as opposed to a weight-only check-in).
 const hasFood=e=>e.calories!=null||e.protein!=null||e.steps!=null||e.onPlan!=null;
 
@@ -187,6 +190,276 @@ function checkinText(st){
   if(st.state==='overdue') return 'Check-in overdue · was due '+when;
   return (st.lastW?'Next check-in ':'First check-in ')+when+' (in '+plural(diffDays(today(),st.due),'day')+')';
 }
+
+/* ---------- cut plan: finish line + calorie coach ---------- */
+// 1 lb of body fat ≈ 3,500 kcal, so each 1 lb/week of planned loss means eating about
+// 500 kcal/day below maintenance.
+const KCAL_PER_LB=3500;
+const MIN_TARGET=1500; // the coach never suggests eating less than this per day
+const MAX_STEP=200;    // …or moving your target by more than this at once
+// Tiny DOM helper: el('div','class','text', child, child…)
+function el(tag,cls,text,...kids){const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;n.append(...kids);return n;}
+const kcal=n=>Math.round(n).toLocaleString();
+const signed=(n,dp=1)=>(n>0?'+':n<0?'−':'')+Math.abs(n).toFixed(dp);
+const wks=w=>w<1.5?plural(Math.max(1,Math.round(w*7)),'day'):w<=26?plural(Math.round(w),'week'):plural(Math.round(w/4.35),'month');
+// A date that may be months away: adds the year when it isn't this year ("Feb 7, 2027").
+const far=s=>parse(s).getFullYear()===parse(today()).getFullYear()?short(s):parse(s).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+
+// Straight line through weigh-ins [{date,weight}] (least squares). slope = lb per day;
+// se = how far the weigh-ins scatter around the line, as uncertainty in that slope.
+function fitLine(ws){
+  const xs=ws.map(e=>diffDays(ws[0].date,e.date)), ys=ws.map(e=>e.weight), n=xs.length;
+  const mx=xs.reduce((s,x)=>s+x,0)/n, my=ys.reduce((s,y)=>s+y,0)/n;
+  let sxy=0,sxx=0; xs.forEach((x,i)=>{sxy+=(x-mx)*(ys[i]-my);sxx+=(x-mx)**2;});
+  const slope=sxy/sxx, resid=ys.reduce((s,y,i)=>s+(y-(my+slope*(xs[i]-mx)))**2,0);
+  return {slope,se:n>2?Math.sqrt(resid/(n-2)/sxx):Infinity};
+}
+
+// Where you are between your first weigh-in and your goal, and when you'll get there:
+// at your actual pace and at your planned pace. Your actual pace is a straight line through
+// the last 4/6/8 weeks of weigh-ins (the same kind of line the calorie coach uses). Unlike
+// the smoothed trend, a line doesn't lag behind, so it's right from the third check-in.
+// Under 0.2 lb/week counts as not dropping (the same cutoff as the stall check).
+function finishLine(a){
+  const g=curGoals(), S=sched();
+  if(!g.goalWeight||!a.pts.length) return null;
+  const last=a.pts[a.pts.length-1], start=a.pts[0].w, now=last.t, goal=g.goalWeight, pace=g.pace||1;
+  const toGo=now-goal, lost=start-now, total=start-goal, reached=toGo<=0;
+  const pct=reached?100:total>0?Math.max(0,Math.min(100,lost/total*100)):0;
+  const recent=a.pts.filter(p=>p.date>=addDays(last.date,-S.coach)).map(p=>({date:p.date,weight:p.w}));
+  const enough=recent.length>=3&&diffDays(recent[0].date,last.date)>=Math.max(7,2*S.every);
+  const actual=enough?-fitLine(recent).slope*7:null; // lb lost per week (negative = gaining)
+  const etaWeeks=!reached&&actual!=null&&actual>=0.2?toGo/actual:null;
+  const planWeeks=reached?0:toGo/pace;
+  return {start,now,goal,pace,toGo,lost,pct,reached,actual,etaWeeks,planWeeks,
+    eta:etaWeeks!=null?addDays(today(),Math.round(etaWeeks*7)):null,
+    planDate:reached?null:addDays(today(),Math.round(planWeeks*7)),
+    paceState:reached?'reached':actual==null?null:actual>=pace*1.1?'ahead':actual>=pace*0.85?'on':'behind'};
+}
+function paceText(fl){
+  if(fl.paceState==='reached') return 'Goal reached 🎯 Set a new one in Settings → Cut plan.';
+  if(fl.paceState==='ahead') return 'Ahead of plan, about '+wks(fl.planWeeks-fl.etaWeeks)+' early';
+  if(fl.paceState==='on') return 'On pace with your '+fl.pace+' lb/week plan';
+  if(fl.paceState==='behind') return fl.etaWeeks!=null?'About '+wks(fl.etaWeeks-fl.planWeeks)+' behind plan':'Behind plan: your weight isn\'t dropping yet';
+  return 'Your pace shows after '+(isDaily()?'about a week of weigh-ins':'your third check-in');
+}
+
+// Calorie coach. Your real maintenance calories (TDEE) = what you ate on average + the
+// energy your weight change accounts for. Example: averaging 2,300 kcal/day while losing
+// 1 lb/week (3,500 kcal ÷ 7 = 500 kcal/day) means maintenance ≈ 2,800.
+// It uses the longest recent stretch (up to 4/6/8 weeks by schedule, at least 2) with food
+// logged on 70%+ of days and 3+ weigh-ins spanning 2+ weeks. Days under 800 kcal are skipped
+// as probably-incomplete logs, and today is skipped because it isn't over yet.
+function coachEstimate(){
+  const S=sched(), g=curGoals(), all=Object.values(entries()), end=addDays(today(),-1);
+  const weighs=all.filter(e=>e.weight!=null).sort((x,y)=>x.date<y.date?-1:1);
+  let best=null, probe=null;
+  for(let len=S.coach;len>=14;len-=7){
+    const start=addDays(end,-(len-1));
+    const food=all.filter(e=>e.date>=start&&e.date<=end&&e.calories!=null&&e.calories>=800);
+    // Weigh-ins from up to one check-in period before the window, so a weekly check-in
+    // just before it can anchor the start of the weight line.
+    const w=weighs.filter(e=>e.date>=addDays(start,-(S.every-1))&&e.date<=today());
+    const span=w.length>1?diffDays(w[0].date,w[w.length-1].date):0, need=Math.ceil(len*0.7);
+    if(food.length>=need&&w.length>=3&&span>=14){best={len,food,w};break;}
+    // While collecting, show progress toward the window that's closest to ready.
+    const score=Math.min(1,food.length/need,w.length/3,span/14);
+    if(!probe||score>=probe.score) probe={len,food:food.length,need,weighs:w.length,span,score};
+  }
+  if(!best) return {state:'collecting',...probe};
+  // The weight line's slope is lb gained per day (negative while losing).
+  const {slope,se}=fitLine(best.w), n=best.w.length;
+  const intake=best.food.reduce((s,e)=>s+e.calories,0)/best.food.length;
+  const tdee=intake-slope*KCAL_PER_LB;
+  const err=se*KCAL_PER_LB; // how sure, in kcal/day
+  const base={len:best.len,foodDays:best.food.length,weighs:n,intake,slopeWk:slope*7,tdee,
+    confidence:best.len<21||err>=300?'rough':err<150&&best.len>=28?'solid':'good'};
+  if(!(tdee>=1200&&tdee<=6000)) return {state:'odd',...base};
+  const pace=g.pace||1;
+  let target=Math.round((tdee-pace*KCAL_PER_LB/7)/50)*50;
+  const floored=target<MIN_TARGET; if(floored) target=MIN_TARGET;
+  const cur=g.calories||null;
+  // After you apply a suggestion, wait about a check-in before suggesting the next change.
+  const gap=isDaily()?5:Math.max(5,S.every-2);
+  const cooldown=cur&&g.calSetOn&&diffDays(g.calSetOn,today())<gap?addDays(g.calSetOn,gap):null;
+  let next=target;
+  if(cur){const diff=target-cur; next=cooldown||Math.abs(diff)<100?cur:cur+Math.max(-MAX_STEP,Math.min(MAX_STEP,Math.round(diff/50)*50));}
+  next=Math.max(MIN_TARGET,next);
+  // Eating well over a target that's already right is a different fix than a wrong target.
+  const over=cur&&intake-cur>=75?intake-cur:null;
+  return {state:'ready',...base,pace,target,next,cur,floored,cooldown,change:cur?next-cur:null,
+    over,atCur:cur?(tdee-cur)*7/KCAL_PER_LB:null};
+}
+function applyTarget(v){
+  if(mode==='example') return;
+  goals={...goals,calories:v,calSetOn:today()}; synced.touch('p:goals');
+  if(canStore) save(KEY_GOALS,goals);
+  fillGoals(); render();
+}
+
+// ---- rendering: finish line, coach (full on Progress, compact in the review) ----
+function meterRow(name,valText,pct,state){
+  const bar=el('span','fuel-bar'+(state?' '+state:''),null,el('i'));
+  bar.firstChild.style.width=Math.max(0,Math.min(100,pct))+'%';
+  return el('div','fuel-row',null,el('span','fuel-name',name),el('span','fuel-num num'+(state?' '+state:''),valText),bar);
+}
+function trackEl(pct){ const t=el('div','track',null,el('i')); t.firstChild.style.width=pct+'%'; return t; }
+function renderFinish(box,fl,compact){
+  box.innerHTML='';
+  const g=curGoals();
+  if(!g.goalWeight){
+    const a=el('a','btn ghost small','Set a goal in Settings'); a.href='#settings';
+    box.append(el('p','msg','Set your goal weight and pace to see your finish line and ETA.'),a); return;
+  }
+  if(!fl){box.append(el('p','msg','Log your first check-in to start the countdown to '+fmt(g.goalWeight)+' lb.'));return;}
+  if(compact){
+    box.append(trackEl(fl.pct),el('p','coach-note',fl.reached?paceText(fl):fmt(fl.toGo)+' lb to go'+(fl.eta?' · ETA '+far(fl.eta):'')+' · '+paceText(fl).toLowerCase()));
+    return;
+  }
+  const ends=el('div','track-ends',null,
+    el('span',null,'Start ',el('b',null,fmt(fl.start))),el('span',null,'Now ',el('b',null,fmt(fl.now))),el('span',null,'Goal ',el('b',null,fmt(fl.goal))));
+  const rows=el('div','recap'); fillRecap(rows,[
+    ['Lost so far',fmt(Math.max(0,fl.lost))+' lb'],
+    ['To go',fl.reached?'0 lb':fmt(fl.toGo)+' lb'],
+    ['Your pace',fl.actual==null?'–':signed(-fl.actual)+' lb/wk'],
+    ['Planned pace',signed(-fl.pace)+' lb/wk'],
+    ['ETA at your pace',fl.eta?far(fl.eta)+' · '+wks(fl.etaWeeks):'–'],
+    ['ETA on plan',fl.planDate?far(fl.planDate):'–'],
+  ]);
+  box.append(ends,trackEl(fl.pct),el('p','track-pct',Math.round(fl.pct)+'% of the way'),el('p','pace-state '+(fl.paceState||''),paceText(fl)),rows);
+}
+function applyRow(c){
+  if(mode==='example') return el('p','coach-note','Example data: log your own food and check-ins to get your real number.');
+  if(c.cooldown&&c.target!==c.cur) return el('p','coach-note','Target updated '+short(goals.calSetOn)+'. The coach re-checks from '+short(c.cooldown)+' so each change has a week to show up on the scale.');
+  if(c.change===0) return el('p','coach-ok','Your target ('+kcal(c.cur)+') is right where it should be ✓');
+  const b=el('button','btn small',c.cur?'Change target to '+kcal(c.next)+' ('+signed(c.change,0)+')':'Set target to '+kcal(c.next)); b.type='button';
+  b.addEventListener('click',()=>applyTarget(c.next));
+  const out=el('div','coach-apply',null,b);
+  if(c.cur&&c.next!==c.target) out.append(el('p','coach-note','Moving in steps of up to '+MAX_STEP+' kcal per check-in, heading toward '+kcal(c.target)+'.'));
+  return out;
+}
+function overNote(c){
+  if(!c.over||mode==='example') return [];
+  return [el('p','coach-note','Over the last '+wks(c.len/7)+' you averaged '+kcal(c.intake)+' kcal, about '+kcal(c.over)+' over your target. Sticking to '+kcal(c.cur)+' would mean about '+fmt(c.atCur)+' lb/week.')];
+}
+function renderCoach(box,c,compact){
+  box.innerHTML='';
+  if(c.state==='collecting'){
+    if(compact){box.append(el('p','coach-note','Still learning your metabolism: food logged '+c.food+'/'+c.need+' days, '+c.weighs+'/3 check-ins.'));return;}
+    box.append(el('p','msg','Learning your metabolism. The coach needs about 2 weeks of food logs and 3 check-ins, then it gets sharper every week.'),
+      meterRow('Food logged · last '+c.len+' days',c.food+' / '+c.need+' days',c.food/c.need*100,c.food>=c.need?'hit':''),
+      meterRow('Weigh-ins · across 2+ weeks',c.weighs+' / 3 · '+c.span+' / 14 days',Math.min(c.weighs/3,c.span/14)*100,c.weighs>=3&&c.span>=14?'hit':''));
+    return;
+  }
+  if(c.state==='odd'){box.append(el('p','msg','The math came out at '+kcal(c.tdee)+' kcal/day, which doesn\'t look right. Check that your food logs cover whole days.'));return;}
+  const tgt=el('p','coach-target','For '+c.pace+' lb/week: eat about ',el('b',null,kcal(c.target)),' kcal/day');
+  if(compact){box.append(el('p','coach-note','Maintenance ≈ '+kcal(c.tdee)+' kcal/day ('+c.confidence+' estimate)'),tgt,applyRow(c),...overNote(c));return;}
+  const rows=el('div','recap'); fillRecap(rows,[
+    ['Avg intake',kcal(c.intake)+' kcal'],
+    ['Weight trend',signed(c.slopeWk)+' lb/wk'],
+    ['Based on',c.foodDays+' days · '+c.weighs+' weigh-ins'],
+    ['Accuracy',c.confidence],
+  ]);
+  box.append(el('span','lbltxt','Estimated maintenance'),el('div','coach-big',null,el('span','num',kcal(c.tdee)),el('span','coach-unit','kcal / day')),tgt);
+  if(c.floored) box.append(el('p','coach-note','That pace would need under '+kcal(MIN_TARGET)+' kcal/day, so the coach stops at '+kcal(MIN_TARGET)+'. A slower pace is safer here.'));
+  box.append(applyRow(c),...overNote(c),rows,el('p','coach-note','Updates as you log. Early weeks include water weight, so the first estimates can run high.'));
+}
+
+/* ---------- check-in review ---------- */
+// A recap of the stretch leading up to a check-in: weight change, food vs your targets,
+// photos, the coach's calorie suggestion and one or two things to focus on next. Pops up
+// after you save a weekly check-in; the latest one also stays on the Progress tab.
+let reviewDate=null, lastA=null, reviewFrom=null; // reviewFrom: what had focus before it opened
+function buildReview(date){
+  const E=entries(), g=curGoals(), all=Object.values(E);
+  const ws=all.filter(e=>e.weight!=null).sort((x,y)=>x.date<y.date?-1:1);
+  const i=ws.findIndex(e=>e.date===date); if(i<0) return null;
+  const cur=ws[i], prev=i>0?ws[i-1]:null;
+  // The food that led up to this check-in: from the previous check-in day (you weigh in
+  // first, then eat) to the day before this one. Daily schedule / first check-in: last 7 days.
+  const from=!isDaily()&&prev&&diffDays(prev.date,date)<=21?prev.date:addDays(date,-7);
+  const to=addDays(date,-1), days=diffDays(from,date);
+  const span=all.filter(e=>e.date>=from&&e.date<=to);
+  const cal=span.filter(e=>e.calories!=null&&e.calories>=800), prot=span.filter(e=>e.protein!=null);
+  const plan=span.filter(e=>e.onPlan!=null), sleep=span.filter(e=>e.sleep!=null);
+  const avg=(l,k)=>l.length?l.reduce((s,e)=>s+e[k],0)/l.length:null;
+  const over=g.calories?cal.filter(e=>e.calories>g.calories):[];
+  const {pts}=series(), tNow=trendAt(pts,date), tPrev=trendAt(pts,prev&&!isDaily()?prev.date:addDays(date,-7));
+  const R={date,days,from,to,weight:cur.weight,prevDate:prev?prev.date:null,change:prev?cur.weight-prev.weight:null,
+    trendChange:tNow&&tPrev&&tPrev.date<tNow.date?tNow.t-tPrev.t:null,
+    total:ws[0].date<date&&tNow?ws[0].weight-tNow.t:null, startDate:ws[0].date,
+    week:Math.floor(diffDays(ws[0].date,date)/7)+1,
+    logged:span.filter(hasFood).length, avgCal:avg(cal,'calories'), calDays:cal.length, overDays:over.length,
+    overWeekend:over.filter(e=>{const d=parse(e.date).getDay();return d===0||d===6;}).length,
+    avgProt:avg(prot,'protein'), protDays:prot.length, protHit:g.protein?prot.filter(e=>e.protein>=g.protein).length:null,
+    planDays:plan.length, onPlan:plan.filter(e=>e.onPlan).length, avgSleep:avg(sleep,'sleep'),
+    photo:photoFor(date), prevPhoto:[...photos].reverse().find(p=>p.date<date)||null};
+  R.focus=focusFor(R,g);
+  return R;
+}
+// One or two concrete things to work on next, from the weakest spot of the week.
+function focusFor(R,g){
+  const out=[];
+  if(R.logged<R.days-1) out.push(!R.prevDate&&!R.logged?'First check-in done. Log your food every day this week, so next week\'s review has something to show.'
+    :'Log food every day. '+plural(R.days-R.logged,'day')+' had nothing logged, which leaves gaps for the coach.');
+  if(g.calories&&R.overDays>=2) out.push('Calories went over target on '+plural(R.overDays,'day')+(R.overWeekend>=Math.ceil(R.overDays/2)?', mostly on the weekend. Plan those meals ahead.':'. Find the meal that usually runs over and swap it.'));
+  if(g.protein&&R.protDays&&R.protHit<=R.protDays-2) out.push('Protein hit '+R.protHit+' of '+R.protDays+' days. A protein-heavy breakfast makes '+g.protein+' g much easier.');
+  if(R.planDays>=3&&R.onPlan/R.planDays<0.75) out.push('On plan '+R.onPlan+' of '+R.planDays+' days. Aim for one more on-plan day than this week.');
+  if(R.avgSleep!=null&&R.avgSleep<=2.5) out.push('Sleep averaged '+fmt(R.avgSleep)+'/5. Bad sleep drives hunger, so protect your bedtime.');
+  if(!out.length) out.push(R.trendChange!=null&&R.trendChange<0?'Strong week. Keep everything exactly the same.':'Solid habits this week. Stay the course: one flat week isn\'t a plateau.');
+  return out.slice(0,2);
+}
+// sheet=true for the pop-up, which also shows the coach and finish line (the Progress tab
+// already has both right above its copy of the review).
+function renderReview(box,R,sheet){
+  box.innerHTML='';
+  if(!R){box.append(el('p','msg','Your first review appears after your first check-in.'));return;}
+  const g=curGoals();
+  const stat=(lbl,val,sub)=>el('div','fact',null,el('div','num',val),el('div','lbl',lbl),...(sub?[el('div','fact-sub',sub)]:[]));
+  box.append(el('p','rv-when','Week '+R.week+' · '+dayShort(R.date)+' '+short(R.date)),
+    el('div','rv-stats',null,
+      stat('Weight',fmt(R.weight),R.change!=null?signed(R.change)+' vs '+short(R.prevDate):'first check-in'),
+      stat('Trend',R.trendChange!=null?signed(R.trendChange):'–',R.trendChange==null?'after next check-in':isDaily()?'last 7 days':'since last'),
+      stat('Since start',R.total!=null?signed(-R.total):'–',R.startDate<R.date?'since '+short(R.startDate):'starting point')),
+    el('h5','rv-h','Focus for next week'),el('ul','notes',null,...R.focus.map(f=>el('li',null,f))));
+  if(sheet){
+    const c=el('div','rv-part'); renderCoach(c,coachEstimate(),true); box.append(el('h5','rv-h','Calorie coach'),c);
+    if(g.goalWeight&&lastA){ const f=el('div','rv-part'); renderFinish(f,finishLine(lastA),true); box.append(el('h5','rv-h','Finish line'),f); }
+  }
+  const food=el('div','recap'); fillRecap(food,[
+    ['Food logged',R.logged+' / '+R.days+' days'],
+    ['Avg calories',R.avgCal==null?'–':kcal(R.avgCal)+(g.calories?' / '+kcal(g.calories):'')],
+    ['On calorie target',g.calories&&R.calDays?(R.calDays-R.overDays)+' / '+R.calDays:'–'],
+    ['Avg protein',R.avgProt==null?'–':Math.round(R.avgProt)+(g.protein?' / '+g.protein:'')+' g'],
+    ['Hit protein goal',g.protein&&R.protDays?R.protHit+' / '+R.protDays:'–'],
+    ['On plan',R.planDays?R.onPlan+' / '+R.planDays:'–'],
+  ]);
+  box.append(el('h5','rv-h','Food · '+short(R.from)+' – '+short(R.to)),food);
+  if(R.photo||R.prevPhoto){
+    const fig=(p,label)=>{const img=el('img'); img.src=photoURL[p.date]; img.alt=label+' photo, '+short(p.date);
+      const b=el('button','cmp-img',null,img); b.type='button'; b.addEventListener('click',()=>openViewer(p.date));
+      return el('figure',null,null,b,el('figcaption',null,label.toUpperCase()+' · '+photoCap(p.date)));};
+    const cmp=el('div','compare');
+    if(R.prevPhoto) cmp.append(fig(R.prevPhoto,'Before'));
+    cmp.append(R.photo?fig(R.photo,'Now'):el('p','coach-note','No photo for this check-in yet. Add one in the Log tab.'));
+    box.append(el('h5','rv-h','Photos'),cmp);
+    const wa=R.prevPhoto?weightOn(R.prevPhoto.date):null, wb=R.photo?weightOn(R.photo.date):null;
+    if(wa!=null&&wb!=null){const days=diffDays(R.prevPhoto.date,R.photo.date);
+      box.append(el('p','cmp-delta',signed(wb-wa)+' lb over '+(days>=14?Math.round(days/7)+' weeks':days===7?'1 week':plural(days,'day'))));}
+  }
+}
+function openReview(date){
+  reviewDate=date; reviewFrom=document.activeElement; renderReview($('rvBody'),buildReview(date),true);
+  $('reviewSheet').hidden=false; document.documentElement.classList.add('modal-open');
+  $('reviewSheet').scrollTop=0; $('rvClose').focus();
+}
+function closeReview(){
+  $('reviewSheet').hidden=true; document.documentElement.classList.remove('modal-open'); reviewDate=null;
+  if(reviewFrom&&reviewFrom.focus) reviewFrom.focus({preventScroll:true}); reviewFrom=null;
+}
+$('rvClose').addEventListener('click',closeReview);
+$('rvDone').addEventListener('click',closeReview);
+$('reviewSheet').addEventListener('click',ev=>{if(ev.target.id==='reviewSheet') closeReview();});
 
 /* ---------- end-of-day debrief: hunger, energy, sleep (1–5) ---------- */
 // Stored on each day's entry as hunger/energy/sleep. The labels say which end is which,
@@ -312,10 +585,21 @@ function render(){
   renderBanner();
   renderGallery();
   // home cards + tab subtitles
-  const lp=a.pts[a.pts.length-1], ci=checkinStatus(a.pts), ciText=checkinText(ci);
+  const ci=checkinStatus(a.pts), ciText=checkinText(ci);
   const t=$('hsTag'); t.textContent=v.tag; t.className='tag '+v.cls;
-  $('hsTrend').textContent=lp?'Trend '+fmt(lp.t)+' lb':'No weigh-ins yet';
-  $('hsNext').textContent=a.rate==null?'Trend needs a few more check-ins':(a.rate>0?'+':'')+fmt(a.rate,2)+' lb/wk on trend';
+  // cut plan: finish line + calorie coach + latest check-in review
+  lastA=a;
+  const fl=finishLine(a), coach=coachEstimate();
+  renderMission(fl,a);
+  renderFinish($('finishPanel'),fl);
+  renderCoach($('coachPanel'),coach);
+  renderReview($('reviewPanel'),a.pts.length?buildReview(a.pts[a.pts.length-1].date):null);
+  if(reviewDate&&!$('reviewSheet').hidden) renderReview($('rvBody'),buildReview(reviewDate),true);
+  if(v.tag==='True plateau'&&coach.state==='ready'&&coach.change<0) $('vDo').textContent=v.do+' The calorie coach suggests '+kcal(coach.next)+' kcal/day.';
+  $('coachHint').textContent=coach.state==='ready'&&mode!=='example'
+    ?'Calorie coach suggests '+kcal(coach.next)+' kcal/day for your '+coach.pace+' lb/week pace. Apply it from the Progress tab.'
+    :'Once you have about 2 weeks of food logs and 3 check-ins, the calorie coach on the Progress tab can set your calorie target for you.';
+  renderPlanSummary();
   renderToday(ci,ciText);
   renderCheckinCard(ci,ciText);
   const sName=isDaily()?'Daily weigh-ins':(S.every===7?'Weekly':'Bi-weekly')+' check-ins on '+DAY_NAMES[settings.checkinDay]+'s';
@@ -353,6 +637,18 @@ function renderCheckinCard(ci,ciText){
   $('ciTitle').textContent=isDaily()?'Weigh-in':(sched().every===7?'Weekly':'Bi-weekly')+' check-in';
   const st=$('ciStatus'); st.textContent=ciText; st.className='ci-status '+ci.state;
   $('ciCard').classList.toggle('alert',ci.state==='due'||ci.state==='overdue');
+}
+// Home mission card: trend weight, progress bar from start to goal, and the ETA.
+function renderMission(fl,a){
+  const lp=a.pts[a.pts.length-1], g=curGoals();
+  $('hsTrend').textContent=lp?'Trend '+fmt(lp.t)+' lb':'No weigh-ins yet';
+  $('msTrack').hidden=!fl;
+  if(fl){
+    $('msFill').style.width=fl.pct+'%';
+    $('hsNext').textContent=fl.reached?'Goal reached 🎯 Set a new one in Settings.'
+      :fmt(Math.max(0,fl.lost))+' lb down · '+fmt(fl.toGo)+' to go · '
+        +(fl.eta?'ETA '+far(fl.eta):fl.actual==null?'ETA after '+(isDaily()?'a week of weigh-ins':'your 3rd check-in'):'ETA once the scale moves down');
+  } else $('hsNext').textContent=(a.rate==null?'Trend needs a few more check-ins':signed(a.rate,2)+' lb/wk on trend')+(g.goalWeight?'':' · set a goal weight in Settings');
 }
 function setStreak(id,n,unit){const el=$(id);el.textContent=n;const s=document.createElement('small');s.textContent=unit;el.append(s);}
 
@@ -512,6 +808,8 @@ $('ciForm').addEventListener('submit',ev=>{
   if(w==null||w<50||w>700){msg.className='msg err';msg.textContent='Enter your weight in pounds (50–700).';return;}
   const ok=saveDay(date,{weight:w}); loadCheckin(date);
   msg.textContent=!canStore?'Saved for this session.':ok?(photoFor(date)?'Check-in saved ✓':'Weight saved. Add your photo to finish the check-in.'):'Couldn\'t save.';
+  const age=diffDays(date,today());
+  if(ok&&!isDaily()&&age>=0&&age<=1) openReview(date); // today's (or yesterday's) check-in
 });
 $('ciDel').addEventListener('click',()=>{
   const date=$('ciDate').value; if(!mine[date]||mine[date].weight==null) return;
@@ -519,9 +817,40 @@ $('ciDel').addEventListener('click',()=>{
 });
 
 /* ---------- settings: goals + check-in schedule ---------- */
-function fillGoals(){$('gCal').value=goals.calories??'';$('gProt').value=goals.protein??'';$('gSteps').value=goals.steps??'';}
+function fillGoals(){
+  $('gCal').value=goals.calories??''; $('gProt').value=goals.protein??''; $('gSteps').value=goals.steps??'';
+  $('gWeight').value=goals.goalWeight??''; pendingPace=goals.pace||1; paintPace(); renderPlanSummary();
+}
+// Cut plan: goal weight + pace. The pace buttons only take effect when you tap Save plan.
+let pendingPace=1;
+function paintPace(){for(const b of document.querySelectorAll('[data-pace]')) b.setAttribute('aria-pressed',+b.dataset.pace===pendingPace);}
+function renderPlanSummary(){
+  // Uses your real weigh-ins only (never the example data).
+  const gw=numOrNull('gWeight'), {pts}=series(), now=pts.length&&mode!=='example'?pts[pts.length-1].t:null;
+  let t;
+  if(!gw) t='Enter a goal weight to see your finish line.';
+  else if(now==null) t='Log your first check-in and this shows your finish date.';
+  else if(now<=gw) t='You\'re already at or under '+fmt(gw)+' lb. 🎯';
+  else{
+    const w=(now-gw)/pendingPace;
+    t='From '+fmt(now)+' lb at '+pendingPace+' lb/week → '+fmt(gw)+' lb around '+far(addDays(today(),Math.round(w*7)))+' ('+wks(w)+'). That means eating about '+kcal(pendingPace*KCAL_PER_LB/7)+' kcal/day under maintenance.';
+    if(pendingPace/now*100>1) t+=' Heads up: that\'s over 1% of your body weight per week, which makes it harder to keep muscle.';
+  }
+  $('planSummary').textContent=t;
+}
+for(const b of document.querySelectorAll('[data-pace]')) b.addEventListener('click',()=>{pendingPace=+b.dataset.pace;paintPace();renderPlanSummary();});
+$('gWeight').addEventListener('input',renderPlanSummary);
+$('planSave').addEventListener('click',()=>{
+  const gw=numOrNull('gWeight'), msg=$('planMsg');
+  if(gw!=null&&(gw<50||gw>700)){msg.className='msg err';msg.textContent='Goal weight should be 50–700 lb.';return;}
+  goals={...goals,goalWeight:gw,pace:pendingPace}; synced.touch('p:goals');
+  if(canStore) save(KEY_GOALS,goals);
+  render(); msg.className='msg'; msg.textContent='Saved.';
+});
 $('goalSave').addEventListener('click',()=>{
-  goals={calories:numOrNull('gCal'),protein:numOrNull('gProt'),steps:numOrNull('gSteps')}; synced.touch('p:goals');
+  const cal=numOrNull('gCal');
+  // A new calorie target gets the same week to show up on the scale as a coach suggestion.
+  goals={...goals,calories:cal,protein:numOrNull('gProt'),steps:numOrNull('gSteps'),calSetOn:cal!==goals.calories?today():goals.calSetOn}; synced.touch('p:goals');
   render(); $('goalMsg').textContent='Saved.';
   if(canStore&&!save(KEY_GOALS,goals)) $('goalMsg').textContent='Couldn\'t save goals. Try again.';
 });
@@ -681,7 +1010,7 @@ $('vwPrev').addEventListener('click',()=>{if(viewIdx>0){viewIdx--;showViewer();}
 $('vwNext').addEventListener('click',()=>{if(viewIdx<photos.length-1){viewIdx++;showViewer();}});
 $('vwClose').addEventListener('click',()=>{$('viewer').hidden=true;});
 $('viewer').addEventListener('click',ev=>{if(ev.target.id==='viewer') $('viewer').hidden=true;});
-document.addEventListener('keydown',ev=>{if(ev.key==='Escape') $('viewer').hidden=true;});
+document.addEventListener('keydown',ev=>{if(ev.key!=='Escape') return; if(!$('viewer').hidden) $('viewer').hidden=true; else if(!$('reviewSheet').hidden) closeReview();});
 
 /* ---------- mood check-ins ---------- */
 // Four check-ins a day, matching the greeting: morning 5–12, afternoon 12–5, evening 5–9,
